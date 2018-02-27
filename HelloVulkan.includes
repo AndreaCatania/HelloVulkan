@@ -1,0 +1,13 @@
+lib/glm/gtx
+lib/glm/simd
+lib/glm/detail
+.
+lib/glm
+lib/glm/gtc
+lib/glm/ext
+libs/glm/gtx
+libs/glm/detail
+libs/glm/gtc
+libs/glm/simd
+libs/glm/ext
+libs/glm
