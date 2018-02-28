@@ -10,6 +10,8 @@ void print(const char * c){
 	cout << c << endl;
 }
 
+// TODO -> Choosing the right settings for the swap chain
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 	VkDebugReportFlagsEXT flags,
 	VkDebugReportObjectTypeEXT objType,
@@ -26,19 +28,37 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 }
 
 VulkanServer::VulkanServer() :
+	windowData(nullptr),
 	instance(VK_NULL_HANDLE),
 	debugCallback(VK_NULL_HANDLE),
-	physicalDevice(VK_NULL_HANDLE)
+	surface(VK_NULL_HANDLE),
+	physicalDevice(VK_NULL_HANDLE),
+	device(VK_NULL_HANDLE),
+	graphicsQueue(VK_NULL_HANDLE),
+	presentationQueue(VK_NULL_HANDLE)
 {
 
+	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 }
 
-bool VulkanServer::create(){
+bool VulkanServer::enableValidationLayer(){
+#ifdef NDEBUG
+	return false;
+#else
+	return true;
+#endif
+}
+
+bool VulkanServer::create(const WindowData* p_windowData){
+	windowData = p_windowData;
 
 	if( !createInstance() )
 		return false;
 
 	if( !createDebugCallback() )
+		return false;
+
+	if( !createSurface() )
 		return false;
 
 	if( !pickPhysicalDevice() )
@@ -53,7 +73,9 @@ bool VulkanServer::create(){
 void VulkanServer::destroy(){
 	destroyLogicalDevice();
 	destroyDebugCallback();
+	destroySurface();
 	destroyInstance();
+	windowData = nullptr;
 }
 
 bool VulkanServer::createInstance(){
@@ -93,7 +115,7 @@ bool VulkanServer::createInstance(){
 		requiredExtensions.insert(requiredExtensions.end(), &glfwExtensions[0], &glfwExtensions[glfwExtensionsCount]);
 	}
 
-	if(!checkExtensionsSupport(requiredExtensions)){
+	if(!checkInstanceExtensionsSupport(requiredExtensions)){
 		return false;
 	}
 
@@ -160,6 +182,23 @@ void VulkanServer::destroyDebugCallback(){
 	print("[info] Debug callback destroyed");
 }
 
+bool VulkanServer::createSurface(){
+	VkResult res = glfwCreateWindowSurface(instance, windowData->window, nullptr, &surface);
+	if(res == VK_SUCCESS){
+		print("[INFO] surface created");
+		return true;
+	}else{
+		print("[ERROR] surface not created");
+		return false;
+	}
+}
+
+void VulkanServer::destroySurface(){
+	if(surface==VK_NULL_HANDLE)
+		return;
+	vkDestroySurfaceKHR(instance, surface, nullptr);
+}
+
 bool VulkanServer::pickPhysicalDevice(){
 
 	uint32_t availableDevicesCount = 0;
@@ -194,6 +233,7 @@ bool VulkanServer::createLogicalDevice(){
 	float priority = 1.f;
 
 	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
+	vector<VkDeviceQueueCreateInfo> queueCreateInfoArray;
 
 	VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
 	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -201,14 +241,27 @@ bool VulkanServer::createLogicalDevice(){
 	graphicsQueueCreateInfo.queueCount = 1;
 	graphicsQueueCreateInfo.pQueuePriorities = &priority;
 
+	queueCreateInfoArray.push_back(graphicsQueueCreateInfo);
+
+	if(queueIndices.graphicsFamilyIndex != queueIndices.presentationFamilyIndex){
+		// Create dedicated presentation queue
+		VkDeviceQueueCreateInfo presentationQueueCreateInfo = {};
+		presentationQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		presentationQueueCreateInfo.queueFamilyIndex = queueIndices.presentationFamilyIndex;
+		presentationQueueCreateInfo.queueCount = 1;
+		presentationQueueCreateInfo.pQueuePriorities = &priority;
+		queueCreateInfoArray.push_back(presentationQueueCreateInfo);
+	}
+
 	VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
 
 	VkDeviceCreateInfo deviceCreateInfos = {};
 	deviceCreateInfos.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfos.queueCreateInfoCount = 1;
-	deviceCreateInfos.pQueueCreateInfos = &graphicsQueueCreateInfo;
+	deviceCreateInfos.queueCreateInfoCount = queueCreateInfoArray.size();
+	deviceCreateInfos.pQueueCreateInfos = queueCreateInfoArray.data();
 	deviceCreateInfos.pEnabledFeatures = &physicalDeviceFeatures;
-	deviceCreateInfos.enabledExtensionCount = 0;
+	deviceCreateInfos.enabledExtensionCount = deviceExtensions.size();
+	deviceCreateInfos.ppEnabledExtensionNames = deviceExtensions.data();
 
 	if(enableValidationLayer()){
 
@@ -240,6 +293,14 @@ void VulkanServer::lockupDeviceQueue(){
 	QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
 
 	vkGetDeviceQueue(device, indices.graphicsFamilyIndex, 0, &graphicsQueue);
+
+	if(indices.graphicsFamilyIndex!=indices.presentationFamilyIndex){
+		// Lockup dedicated presentation queue
+		vkGetDeviceQueue(device, indices.presentationFamilyIndex, 0, &presentationQueue);
+	}else{
+		presentationQueue = graphicsQueue;
+	}
+
 	print("[INFO] Device queue lockup success");
 }
 
@@ -259,14 +320,62 @@ VulkanServer::QueueFamilyIndices VulkanServer::findQueueFamilies(VkPhysicalDevic
 	for(int i = queueProperties.size()-1;0<=i;--i){
 		if( queueProperties[i].queueCount > 0 && queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT ){
 			indices.graphicsFamilyIndex = i;
-			continue;
+		}
+
+		VkBool32 supported = false;
+		vkGetPhysicalDeviceSurfaceSupportKHR(p_device, i, surface, &supported);
+		if( queueProperties[i].queueCount > 0 && supported ){
+			indices.presentationFamilyIndex = i;
 		}
 	}
 
 	return indices;
 }
 
-bool VulkanServer::checkExtensionsSupport(const vector<const char*> &p_requiredExtensions){
+VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(){
+	SwapChainSupportDetails chainDetails;
+
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &chainDetails.capabilities );
+
+	uint32_t formatsCount = 0;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatsCount, nullptr);
+
+	if(formatsCount>0){
+		chainDetails.formats.resize(formatsCount);
+		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatsCount, chainDetails.formats.data());
+	}
+
+	uint32_t modesCount = 0;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &modesCount, nullptr);
+
+	if(modesCount>0){
+		chainDetails.presentModes.resize(modesCount);
+		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &modesCount, chainDetails.presentModes.data());
+	}
+
+	return chainDetails;
+}
+
+bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
+	bool missing = false;
+	for(int i = 0; i<p_requiredExtensions.size();++i){
+		bool found = false;
+		for(int j = 0; j<availableExtensions.size(); ++j){
+			if( strcmp(p_requiredExtensions[i], availableExtensions[j].extensionName) == 0 ){
+				found = true;
+				break;
+			}
+		}
+
+		if(verbose)
+			print(string("	extension: ") + string(p_requiredExtensions[i]) + string(found ? " [Available]" : " [NOT AVAILABLE]"));
+		if(found)
+			missing = true;
+	}
+	return missing;
+}
+
+bool VulkanServer::checkInstanceExtensionsSupport(const vector<const char*> &p_requiredExtensions){
 	uint32_t availableExtensionsCount = 0;
 	vector<VkExtensionProperties> availableExtensions;
 	vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionsCount, nullptr);
@@ -274,21 +383,7 @@ bool VulkanServer::checkExtensionsSupport(const vector<const char*> &p_requiredE
 	vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionsCount, availableExtensions.data());
 
 	print("Checking if required extensions are available");
-	bool missing = false;
-	for(int i = 0; i<p_requiredExtensions.size();++i){
-		bool found = false;
-		for(int j = 0; j<availableExtensionsCount; ++j){
-			if( strcmp(p_requiredExtensions[i], availableExtensions[j].extensionName) == 0 ){
-				found = true;
-				break;
-			}
-		}
-
-		print(string(found ? "[Available]" : "[NOT AVAILABLE]") + string(" extension: ") + string(p_requiredExtensions[i]) );
-		if(found)
-			missing = true;
-	}
-	return missing;
+	return checkExtensionsSupport(p_requiredExtensions, availableExtensions);
 }
 
 bool VulkanServer::checkValidationLayersSupport(const vector<const char*> &p_layers){
@@ -310,7 +405,7 @@ bool VulkanServer::checkValidationLayersSupport(const vector<const char*> &p_lay
 			}
 		}
 
-		print(string(found ? "[Available]" : "[NOT AVAILABLE]") + string(" layer: ") + string(p_layers[i]) );
+		print(string("	layer: ") + string(p_layers[i]) + string(found ? " [Available]" : " [NOT AVAILABLE]"));
 		if(found)
 			missing = true;
 	}
@@ -319,14 +414,22 @@ bool VulkanServer::checkValidationLayersSupport(const vector<const char*> &p_lay
 
 int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_deviceType){
 
+	print("Select physical device");
+
 	for(int i = p_devices.size()-1; 0<=i; --i){
 
 		// Check here the device
 		VkPhysicalDeviceProperties deviceProps;
 		VkPhysicalDeviceFeatures deviceFeatures;
+		uint32_t extensionsCount;
 
 		vkGetPhysicalDeviceProperties(p_devices[i], &deviceProps);
 		vkGetPhysicalDeviceFeatures(p_devices[i], &deviceFeatures);
+
+		vkEnumerateDeviceExtensionProperties(p_devices[i], nullptr, &extensionsCount, nullptr);
+
+		vector<VkExtensionProperties> availableExtensions(extensionsCount);
+		vkEnumerateDeviceExtensionProperties(p_devices[i], nullptr, &extensionsCount, availableExtensions.data());
 
 		if( deviceProps.deviceType != p_deviceType)
 			continue;
@@ -337,13 +440,20 @@ int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_dev
 		if( !findQueueFamilies(p_devices[i]).isComplete() )
 			continue;
 
+		if( !checkExtensionsSupport(deviceExtensions, availableExtensions, false) )
+			continue;
+
+		// Here we are sure that the extensions are available in that device, so now we can check swap chain
+		SwapChainSupportDetails swapChainDetails = querySwapChainSupport();
+		if(swapChainDetails.formats.empty() || swapChainDetails.presentModes.empty())
+			continue;
+
 		return i;
 	}
 	return -1;
 }
 
 VisualServer::VisualServer(){
-
 }
 
 VisualServer::~VisualServer(){
@@ -353,7 +463,7 @@ VisualServer::~VisualServer(){
 bool VisualServer::init(){
 
 	createWindow();
-	vulkanServer.create();
+	vulkanServer.create(&windowData);
 
 	return true;
 }

@@ -9,6 +9,10 @@
 
 using namespace std;
 
+struct WindowData{
+	GLFWwindow* window;
+};
+
 class GLFWwindow;
 
 class VulkanServer{
@@ -16,19 +20,31 @@ public:
 
 	struct QueueFamilyIndices{
 		int graphicsFamilyIndex = -1;
+		int presentationFamilyIndex = -1;
 
 		bool isComplete(){
 
 			if(graphicsFamilyIndex==-1)
 				return false;
 
+			if(presentationFamilyIndex==-1)
+				return false;
+
 			return true;
 		}
 	};
 
+	struct SwapChainSupportDetails{
+		VkSurfaceCapabilitiesKHR capabilities;
+		vector<VkSurfaceFormatKHR> formats;
+		vector<VkPresentModeKHR> presentModes;
+	};
+
 	VulkanServer();
 
-	bool create();
+	bool enableValidationLayer();
+
+	bool create(const WindowData* p_windowData);
 	void destroy();
 
 	bool createInstance();
@@ -37,13 +53,8 @@ public:
 	bool createDebugCallback();
 	void destroyDebugCallback();
 
-	bool enableValidationLayer(){
-#ifdef NDEBUG
-	return false;
-#else
-	return true;
-#endif
-	}
+	bool createSurface();
+	void destroySurface();
 
 	bool pickPhysicalDevice();
 
@@ -53,17 +64,23 @@ public:
 	void lockupDeviceQueue();
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice p_device);
+	SwapChainSupportDetails querySwapChainSupport();
 
 private:
+	const WindowData* windowData;
+
 	VkInstance instance;
 	VkDebugReportCallbackEXT debugCallback;
+	VkSurfaceKHR surface;
 	VkPhysicalDevice physicalDevice; // Destroyed automatically when instance is cleared
 	VkDevice device;
 	VkQueue graphicsQueue;
+	VkQueue presentationQueue;
 
 	vector<const char*> layers;
+	vector<const char*> deviceExtensions;
 
-	bool checkExtensionsSupport(const vector<const char*> &p_required_extensions);
+	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
 
 	// Return the ID in the array of selected device
@@ -73,10 +90,9 @@ private:
 class VisualServer
 {
 public:
+	friend class VulkanServer;
 
-	struct Window{
-		GLFWwindow* window;
-	} windowData;
+	WindowData windowData;
 
 	VisualServer();
 	~VisualServer();
