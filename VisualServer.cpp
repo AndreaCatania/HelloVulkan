@@ -2,6 +2,9 @@
 
 #include <iostream>
 
+#define WIDTH 800
+#define HEIGHT 600
+
 void print(string c){
 	cout << c << endl;
 }
@@ -9,8 +12,6 @@ void print(string c){
 void print(const char * c){
 	cout << c << endl;
 }
-
-// TODO -> Choosing the right settings for the swap chain
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 	VkDebugReportFlagsEXT flags,
@@ -356,6 +357,72 @@ VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(){
 	return chainDetails;
 }
 
+VkSurfaceFormatKHR VulkanServer::chooseSwapSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats){
+	// If the surface has not a preferred format
+	// That is the best case.
+	// It will return just a format with format field set to VK_FORMAT_UNDEFINED
+	if(p_formats.size() == 1 && p_formats[0].format == VK_FORMAT_UNDEFINED){
+		VkSurfaceFormatKHR sFormat;
+		sFormat.format = VK_FORMAT_B8G8R8A8_UNORM;
+		sFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+		return sFormat;
+	}
+
+	// Choose the best format to use
+	for(VkSurfaceFormatKHR f : p_formats){
+		if(f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR){
+			return f;
+		}
+	}
+
+	// Choose the best from the available formats
+	return p_formats[0]; // TODO create an algorithm to pick the best format
+}
+
+VkPresentModeKHR VulkanServer::chooseSwapPresentMode(const vector<VkPresentModeKHR> &p_modes){
+
+	// This is guaranteed to be supported, but doesn't works so good
+	VkPresentModeKHR bestMode = VK_PRESENT_MODE_FIFO_KHR;
+
+	for (const auto& pm : p_modes) {
+		if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
+			// This mode allow me to use triple buffer
+			return pm;
+		} else if (pm == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+			bestMode = pm;
+		}
+	}
+
+	return bestMode;
+}
+
+VkExtent2D VulkanServer::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities){
+	// When the extent is set to max this mean that we can set any value
+	// In this case we can set any value
+	// So I set the size of WIDTH and HEIGHT used for initialize Window
+	VkExtent2D actualExtent = {WIDTH, HEIGHT};
+
+	actualExtent.width = max(capabilities.minImageExtent.width, min(capabilities.maxImageExtent.width, actualExtent.width));
+	actualExtent.height = max(capabilities.minImageExtent.height, min(capabilities.maxImageExtent.height, actualExtent.height));
+
+	return actualExtent;
+}
+
+bool VulkanServer::createSwapChain(){
+
+	SwapChainSupportDetails chainDetails = querySwapChainSupport();
+
+	VkSurfaceFormatKHR format = chooseSwapSurfaceFormat(chainDetails.formats);
+	VkPresentModeKHR pMode = chooseSwapPresentMode(chainDetails.presentModes);
+	VkExtent2D extent2D = chooseSwapExtent(chainDetails.capabilities);
+
+	// TODO Creating the swap chain
+}
+
+void VulkanServer::destroySwapChain(){
+
+}
+
 bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
 	bool missing = false;
 	for(int i = 0; i<p_requiredExtensions.size();++i){
@@ -485,7 +552,7 @@ void VisualServer::createWindow(){
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	windowData.window = glfwCreateWindow(800, 600, "Hello Vulkan", nullptr, nullptr);
+	windowData.window = glfwCreateWindow(WIDTH, HEIGHT, "Hello Vulkan", nullptr, nullptr);
 }
 
 void VisualServer::freeWindow(){

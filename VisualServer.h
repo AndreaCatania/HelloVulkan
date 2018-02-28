@@ -66,6 +66,14 @@ public:
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice p_device);
 	SwapChainSupportDetails querySwapChainSupport();
 
+	// Helper functions to create the swap chain
+	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats);
+	VkPresentModeKHR chooseSwapPresentMode(const vector<VkPresentModeKHR> &p_modes);
+	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
+
+	bool createSwapChain();
+	void destroySwapChain();
+
 private:
 	const WindowData* windowData;
 
