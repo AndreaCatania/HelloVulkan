@@ -64,7 +64,7 @@ public:
 	void lockupDeviceQueue();
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice p_device);
-	SwapChainSupportDetails querySwapChainSupport();
+	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice p_device);
 
 	// Helper functions to create the swap chain
 	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats);

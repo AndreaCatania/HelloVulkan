@@ -68,10 +68,14 @@ bool VulkanServer::create(const WindowData* p_windowData){
 	if( !createLogicalDevice() )
 		return false;
 
+	if( !createSwapChain() )
+		return false;
+
 	return true;
 }
 
 void VulkanServer::destroy(){
+	destroySwapChain();
 	destroyLogicalDevice();
 	destroyDebugCallback();
 	destroySurface();
@@ -333,25 +337,25 @@ VulkanServer::QueueFamilyIndices VulkanServer::findQueueFamilies(VkPhysicalDevic
 	return indices;
 }
 
-VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(){
+VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(VkPhysicalDevice p_device){
 	SwapChainSupportDetails chainDetails;
 
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &chainDetails.capabilities );
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(p_device, surface, &chainDetails.capabilities );
 
 	uint32_t formatsCount = 0;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatsCount, nullptr);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(p_device, surface, &formatsCount, nullptr);
 
 	if(formatsCount>0){
 		chainDetails.formats.resize(formatsCount);
-		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatsCount, chainDetails.formats.data());
+		vkGetPhysicalDeviceSurfaceFormatsKHR(p_device, surface, &formatsCount, chainDetails.formats.data());
 	}
 
 	uint32_t modesCount = 0;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &modesCount, nullptr);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(p_device, surface, &modesCount, nullptr);
 
 	if(modesCount>0){
 		chainDetails.presentModes.resize(modesCount);
-		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &modesCount, chainDetails.presentModes.data());
+		vkGetPhysicalDeviceSurfacePresentModesKHR(p_device, surface, &modesCount, chainDetails.presentModes.data());
 	}
 
 	return chainDetails;
@@ -410,13 +414,34 @@ VkExtent2D VulkanServer::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabi
 
 bool VulkanServer::createSwapChain(){
 
-	SwapChainSupportDetails chainDetails = querySwapChainSupport();
+	SwapChainSupportDetails chainDetails = querySwapChainSupport(physicalDevice);
 
 	VkSurfaceFormatKHR format = chooseSwapSurfaceFormat(chainDetails.formats);
 	VkPresentModeKHR pMode = chooseSwapPresentMode(chainDetails.presentModes);
 	VkExtent2D extent2D = chooseSwapExtent(chainDetails.capabilities);
 
+	uint32_t imageCount = chainDetails.capabilities.minImageCount;
+	// Check it we can use triple buffer first
+	if(pMode == VK_PRESENT_MODE_MAILBOX_KHR){
+		++imageCount;
+		if(chainDetails.capabilities.maxImageCount > 0) // 0 means no limits
+			imageCount = min(imageCount, chainDetails.capabilities.maxImageCount);
+	}
+
+	VkSwapchainCreateInfoKHR chainCreate = {};
+	chainCreate.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	chainCreate.surface = surface;
+	chainCreate.minImageCount = imageCount;
+	chainCreate.imageFormat = format.format;
+	chainCreate.imageColorSpace = format.colorSpace;
+	chainCreate.imageExtent = extent2D;
+	chainCreate.imageArrayLayers = 1;
+	chainCreate.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
 	// TODO Creating the swap chain
+
+	print("Created swap chain");
+	return true;
 }
 
 void VulkanServer::destroySwapChain(){
@@ -511,7 +536,7 @@ int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_dev
 			continue;
 
 		// Here we are sure that the extensions are available in that device, so now we can check swap chain
-		SwapChainSupportDetails swapChainDetails = querySwapChainSupport();
+		SwapChainSupportDetails swapChainDetails = querySwapChainSupport(p_devices[i]);
 		if(swapChainDetails.formats.empty() || swapChainDetails.presentModes.empty())
 			continue;
 
