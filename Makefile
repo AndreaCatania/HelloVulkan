@@ -11,8 +11,15 @@ export_pkg:
 all: export_pkg main.cpp
 	g++ $(CFLAGS) ${SOURCES} $(LDFLAGS) -o HelloVulkan
 
+debug: export_pkg main.cpp
+	g++ -ggdb $(CFLAGS) ${SOURCES} $(LDFLAGS) -o HelloVulkan.debug
+
 clean:
 	rm -f HelloVulkan
+	rm -f HelloVulkan.debug
 
 run:
 	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./HelloVulkan
+
+rundebug:
+	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./HelloVulkan.debug
