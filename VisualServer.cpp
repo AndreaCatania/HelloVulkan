@@ -36,7 +36,8 @@ VulkanServer::VulkanServer() :
 	physicalDevice(VK_NULL_HANDLE),
 	device(VK_NULL_HANDLE),
 	graphicsQueue(VK_NULL_HANDLE),
-	presentationQueue(VK_NULL_HANDLE)
+	presentationQueue(VK_NULL_HANDLE),
+	swapchain(VK_NULL_HANDLE)
 {
 
 	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -71,10 +72,14 @@ bool VulkanServer::create(const WindowData* p_windowData){
 	if( !createSwapChain() )
 		return false;
 
+	if( !createImageView() )
+		return false;
+
 	return true;
 }
 
 void VulkanServer::destroy(){
+	destroyImageView();
 	destroySwapChain();
 	destroyLogicalDevice();
 	destroyDebugCallback();
@@ -144,7 +149,7 @@ void VulkanServer::destroyInstance(){
 	if(instance==VK_NULL_HANDLE)
 		return;
 	vkDestroyInstance(instance, nullptr);
-	print("[info] Vulkan instance destroyed");
+	print("[INFO] Vulkan instance destroyed");
 }
 
 bool VulkanServer::createDebugCallback(){
@@ -165,7 +170,7 @@ bool VulkanServer::createDebugCallback(){
 
 	VkResult res = func(instance, &createInfo, nullptr, &debugCallback);
 	if(res == VK_SUCCESS){
-		print("[Info] Debug callback loaded");
+		print("[INFO] Debug callback loaded");
 		return true;
 	}else{
 		print("[ERROR] debug callback not created");
@@ -179,12 +184,12 @@ void VulkanServer::destroyDebugCallback(){
 
 	PFN_vkDestroyDebugReportCallbackEXT func = (PFN_vkDestroyDebugReportCallbackEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
 	if(!func){
-		print("[Error] Destroy functin not loaded");
+		print("[ERROR] Destroy functin not loaded");
 		return;
 	}
 
 	func(instance, debugCallback, nullptr);
-	print("[info] Debug callback destroyed");
+	print("[INFO] Debug callback destroyed");
 }
 
 bool VulkanServer::createSurface(){
@@ -322,7 +327,7 @@ VulkanServer::QueueFamilyIndices VulkanServer::findQueueFamilies(VkPhysicalDevic
 	vector<VkQueueFamilyProperties> queueProperties(queueCounts);
 	vkGetPhysicalDeviceQueueFamilyProperties(p_device, &queueCounts,  queueProperties.data());
 
-	for(int i = queueProperties.size()-1;0<=i;--i){
+	for(int i = queueProperties.size() - 1; 0<=i; --i){
 		if( queueProperties[i].queueCount > 0 && queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT ){
 			indices.graphicsFamilyIndex = i;
 		}
@@ -438,21 +443,121 @@ bool VulkanServer::createSwapChain(){
 	chainCreate.imageArrayLayers = 1;
 	chainCreate.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-	// TODO Creating the swap chain
+	// Define how to handle object ownership between queue families
+	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
+	uint32_t queueFamilyIndices[] = {queueIndices.graphicsFamilyIndex, queueIndices.presentationFamilyIndex};
+	if(queueIndices.graphicsFamilyIndex!=queueIndices.presentationFamilyIndex){
+		// Since the queue families are different I want to use concurrent mode so an object can be in multiples families
+		// and I don't need to handle ownership myself
+		chainCreate.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		chainCreate.queueFamilyIndexCount = 2; // Define how much concurrent families I have
+		chainCreate.pQueueFamilyIndices = queueFamilyIndices; // set queue families
+	}else{
+		// I've only one family so I don't need concurrent mode
+		chainCreate.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	}
 
-	print("Created swap chain");
+	chainCreate.preTransform = chainDetails.capabilities.currentTransform;
+	chainCreate.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	chainCreate.presentMode = pMode;
+	chainCreate.clipped = VK_TRUE;
+	chainCreate.oldSwapchain = VK_NULL_HANDLE;
+
+	VkResult res = vkCreateSwapchainKHR(device, &chainCreate, nullptr, &swapchain);
+	if(res != VK_SUCCESS){
+		print("[ERROR] Swap chain creation fail");
+		return false;
+	}
+
+	lockupSwapchainImages();
+
+	swapchainImageFormat = format.format;
+	swapchainExtent = extent2D;
+
+	print("[INFO] Created swap chain");
 	return true;
 }
 
 void VulkanServer::destroySwapChain(){
+	if(swapchain==VK_NULL_HANDLE)
+		return;
+	vkDestroySwapchainKHR(device, swapchain, nullptr);
+	swapchain = VK_NULL_HANDLE;
+	print("[INFO] swapchain destroyed");
+}
+
+void VulkanServer::lockupSwapchainImages(){
+
+	uint32_t imagesCount = 0;
+	vkGetSwapchainImagesKHR(device, swapchain, &imagesCount, nullptr);
+	swapchainImages.resize(imagesCount);
+	vkGetSwapchainImagesKHR(device, swapchain, &imagesCount, swapchainImages.data());
+
+	print("[INFO] lockup images success");
+}
+
+bool VulkanServer::createImageView(){
+
+	swapchainImageViews.resize(swapchainImages.size());
+
+	bool error = false;
+
+	for(int i = swapchainImageViews.size() - 1; i>=0; --i){
+		VkImageViewCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		createInfo.image = swapchainImages[i];
+		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		createInfo.format = swapchainImageFormat;
+		createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+		createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		createInfo.subresourceRange.baseMipLevel = 0;
+		createInfo.subresourceRange.levelCount = 1;
+		createInfo.subresourceRange.baseArrayLayer = 0;
+		createInfo.subresourceRange.layerCount = 1;
+
+		VkResult res = vkCreateImageView(device, &createInfo, nullptr, &swapchainImageViews[i]);
+		if(res != VK_SUCCESS){
+			swapchainImageViews[i] = VK_NULL_HANDLE;
+			error = true;
+		}
+	}
+
+	if(error){
+		print("[ERROR] Error during creation of Immage Views");
+		return false;
+	}else{
+		print("[INFO] All image view created");
+		return true;
+	}
+}
+
+void VulkanServer::destroyImageView(){
+	for(int i = swapchainImages.size() - 1; i>=0; --i){
+
+		if( swapchainImageViews[i] == VK_NULL_HANDLE )
+			continue;
+
+		vkDestroyImageView(device, swapchainImageViews[i], nullptr );
+	}
+	print("[INFO] Destroyed image views");
+}
+
+bool VulkanServer::createGraphicsPipeline(){
+
+}
+
+void VulkanServer::destroyGraphicsPipeline(){
 
 }
 
 bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
 	bool missing = false;
-	for(int i = 0; i<p_requiredExtensions.size();++i){
+	for(size_t i = 0; i<p_requiredExtensions.size();++i){
 		bool found = false;
-		for(int j = 0; j<availableExtensions.size(); ++j){
+		for(size_t j = 0; j<availableExtensions.size(); ++j){
 			if( strcmp(p_requiredExtensions[i], availableExtensions[j].extensionName) == 0 ){
 				found = true;
 				break;
@@ -488,9 +593,9 @@ bool VulkanServer::checkValidationLayersSupport(const vector<const char*> &p_lay
 
 	print("Checking if required validation layers are available");
 	bool missing = false;
-	for(int i = p_layers.size()-1; i>=0; --i){
+	for(int i = p_layers.size() - 1; i>=0; --i){
 		bool found = false;
-		for(int j = 0; j<availableLayersCount;++j){
+		for(size_t j = 0; j<availableLayersCount; ++j){
 			if( strcmp(p_layers[i], availableLayers[j].layerName) == 0 ){
 				found = true;
 				break;
@@ -506,7 +611,7 @@ bool VulkanServer::checkValidationLayersSupport(const vector<const char*> &p_lay
 
 int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_deviceType){
 
-	print("Select physical device");
+	print("[INFO] Select physical device");
 
 	for(int i = p_devices.size()-1; 0<=i; --i){
 

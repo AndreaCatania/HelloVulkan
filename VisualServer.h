@@ -74,6 +74,14 @@ public:
 	bool createSwapChain();
 	void destroySwapChain();
 
+	void lockupSwapchainImages();
+
+	bool createImageView();
+	void destroyImageView();
+
+	bool createGraphicsPipeline();
+	void destroyGraphicsPipeline();
+
 private:
 	const WindowData* windowData;
 
@@ -84,9 +92,17 @@ private:
 	VkDevice device;
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
+	VkSwapchainKHR swapchain;
 
 	vector<const char*> layers;
 	vector<const char*> deviceExtensions;
+
+	vector<VkImage> swapchainImages;
+
+	VkFormat swapchainImageFormat;
+	VkExtent2D swapchainExtent;
+
+	vector<VkImageView> swapchainImageViews;
 
 	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
