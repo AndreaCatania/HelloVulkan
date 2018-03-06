@@ -1,6 +1,7 @@
 ﻿#include "VisualServer.h"
 
 #include <iostream>
+#include <fstream>
 
 #define WIDTH 800
 #define HEIGHT 600
@@ -11,6 +12,23 @@ void print(string c){
 
 void print(const char * c){
 	cout << c << endl;
+}
+
+bool readFile(const string &filename, vector<char> &r_out){
+	// Read the file from the bottom in binary
+	ifstream file(filename, ios::ate | ios::binary);
+
+	if(!file.is_open()){
+		return false;
+	}
+
+	size_t fileSize = static_cast<size_t>(file.tellg());
+	r_out.resize(fileSize);
+
+	file.seekg(0);
+	file.read(r_out.data(), fileSize);
+	file.close();
+	return true;
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
@@ -37,9 +55,11 @@ VulkanServer::VulkanServer() :
 	device(VK_NULL_HANDLE),
 	graphicsQueue(VK_NULL_HANDLE),
 	presentationQueue(VK_NULL_HANDLE),
-	swapchain(VK_NULL_HANDLE)
+	swapchain(VK_NULL_HANDLE),
+	vertShaderModule(VK_NULL_HANDLE),
+	fragShaderModule(VK_NULL_HANDLE),
+	pipelineLayout(VK_NULL_HANDLE)
 {
-
 	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 }
 
@@ -75,10 +95,14 @@ bool VulkanServer::create(const WindowData* p_windowData){
 	if( !createImageView() )
 		return false;
 
+	if( !createGraphicsPipeline() )
+		return false;
+
 	return true;
 }
 
 void VulkanServer::destroy(){
+	destroyGraphicsPipeline();
 	destroyImageView();
 	destroySwapChain();
 	destroyLogicalDevice();
@@ -445,7 +469,7 @@ bool VulkanServer::createSwapChain(){
 
 	// Define how to handle object ownership between queue families
 	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
-	uint32_t queueFamilyIndices[] = {queueIndices.graphicsFamilyIndex, queueIndices.presentationFamilyIndex};
+	uint32_t queueFamilyIndices[] = {(uint32_t)queueIndices.graphicsFamilyIndex, (uint32_t)queueIndices.presentationFamilyIndex};
 	if(queueIndices.graphicsFamilyIndex!=queueIndices.presentationFamilyIndex){
 		// Since the queue families are different I want to use concurrent mode so an object can be in multiples families
 		// and I don't need to handle ownership myself
@@ -545,12 +569,180 @@ void VulkanServer::destroyImageView(){
 	print("[INFO] Destroyed image views");
 }
 
+#define SHADER_VERTEX_PATH "./shaders/bin/vert.spv"
+#define SHADER_FRAGMENT_PATH "shaders/bin/frag.spv"
+
 bool VulkanServer::createGraphicsPipeline(){
 
+/// Load shaders
+	vector<char> vertexShaderBytecode;
+	vector<char> fragmentShaderBytecode;
+
+	if(!readFile(SHADER_VERTEX_PATH, vertexShaderBytecode)){
+		print(string("[ERROR] Failed to load shader bytecode: ") + string(SHADER_VERTEX_PATH));
+		return false;
+	}
+
+	if(!readFile(SHADER_FRAGMENT_PATH, fragmentShaderBytecode)){
+		print(string("[ERROR] Failed to load shader bytecode: ") + string(SHADER_FRAGMENT_PATH));
+		return false;
+	}
+
+	print(string("[INFO] vertex file byte loaded: ") + to_string(vertexShaderBytecode.size()));
+	print(string("[INFO] fragment file byte loaded: ") + to_string(fragmentShaderBytecode.size()));
+
+	vertShaderModule = createShaderModule(vertexShaderBytecode);
+	fragShaderModule = createShaderModule(fragmentShaderBytecode);
+
+	if(vertShaderModule == VK_NULL_HANDLE){
+		print("[ERROR] Failed to create vertex shader module");
+		return false;
+	}
+
+	if(fragShaderModule == VK_NULL_HANDLE){
+		print("[ERROR] Failed to create fragment shader module");
+		return false;
+	}
+
+	vector<VkPipelineShaderStageCreateInfo> shaderStages;
+	{
+		VkPipelineShaderStageCreateInfo vertStageCreateInfo = {};
+		vertStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		vertStageCreateInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+		vertStageCreateInfo.module = vertShaderModule;
+		vertStageCreateInfo.pName = "main";
+		shaderStages.push_back(vertStageCreateInfo);
+
+		VkPipelineShaderStageCreateInfo fragStageCreateInfo = {};
+		fragStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		fragStageCreateInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		fragStageCreateInfo.module = fragShaderModule;
+		fragStageCreateInfo.pName = "main";
+		shaderStages.push_back(fragStageCreateInfo);
+	}
+
+/// Vertex inputs
+	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo = {};
+	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
+
+/// Input Assembly
+	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo = {};
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
+
+/// Viewport
+	VkPipelineViewportStateCreateInfo viewportCreateInfo = {};
+	viewportCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+
+	VkViewport viewport = {};
+	viewport.x = .0;
+	viewport.y = .0;
+	viewport.width = (float)swapchainExtent.width;
+	viewport.height = (float)swapchainExtent.height;
+	viewport.minDepth = .0;
+	viewport.maxDepth = 1.;
+
+	viewportCreateInfo.viewportCount = 1;
+	viewportCreateInfo.pViewports = &viewport;
+
+	// The scissor indicate the part of screen that we want crop, (it's not a transformation nor scaling)
+	VkRect2D scissor = {};
+	scissor.offset = {0, 0};
+	scissor.extent = swapchainExtent;
+
+	viewportCreateInfo.scissorCount = 1;
+	viewportCreateInfo.pScissors = &scissor;
+
+/// Rasterizer
+	VkPipelineRasterizationStateCreateInfo rasterizerCreateInfo = {};
+	rasterizerCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	rasterizerCreateInfo.depthClampEnable = VK_FALSE;
+	rasterizerCreateInfo.rasterizerDiscardEnable = VK_FALSE;
+	rasterizerCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizerCreateInfo.lineWidth = 1.;
+	rasterizerCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+	rasterizerCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizerCreateInfo.depthBiasEnable = VK_FALSE;
+
+/// Multisampling
+	VkPipelineMultisampleStateCreateInfo multisamplingCreateInfo = {};
+	multisamplingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+	multisamplingCreateInfo.sampleShadingEnable = VK_FALSE;
+	multisamplingCreateInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+/// Color blending
+	VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+	colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+	colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+	colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+
+	VkPipelineColorBlendStateCreateInfo colorBlendCreateInfo = {};
+	colorBlendCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+	colorBlendCreateInfo.logicOpEnable = VK_FALSE;
+	colorBlendCreateInfo.attachmentCount = 1;
+	colorBlendCreateInfo.pAttachments = &colorBlendAttachment;
+
+/// Pipeline layout (used to specify uniform variables)
+	VkPipelineLayoutCreateInfo layoutCreateInfo = {};
+	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	layoutCreateInfo.setLayoutCount = 0;
+
+	if(VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout)){
+		print("[ERROR] Failed to create pipeline layout");
+		return false;
+	}
+
+	return true;
 }
 
 void VulkanServer::destroyGraphicsPipeline(){
 
+	if(pipelineLayout!=VK_NULL_HANDLE){
+		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+		print("[INFO] pipeline layout destroyed ");
+	}
+
+	destroyShaderModule(vertShaderModule);
+	destroyShaderModule(fragShaderModule);
+
+	print("[INFO] pipeline destroyed");
+}
+
+VkShaderModule VulkanServer::createShaderModule(vector<char> &shaderBytecode){
+
+	VkShaderModuleCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	if(shaderBytecode.size()){
+		createInfo.codeSize = shaderBytecode.size();
+		createInfo.pCode = reinterpret_cast<const uint32_t*>(shaderBytecode.data());
+	}else{
+		createInfo.codeSize = 0;
+		createInfo.pCode = nullptr;
+	}
+
+	VkShaderModule shaderModule;
+	if( vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) == VK_SUCCESS){
+		print("[INFO] shader module created");
+		return shaderModule;
+	}else{
+		return VK_NULL_HANDLE;
+	}
+}
+
+void VulkanServer::destroyShaderModule(VkShaderModule &shaderModule){
+	if(shaderModule==VK_NULL_HANDLE)
+		return;
+
+	vkDestroyShaderModule(device, shaderModule, nullptr);
+	print("[INFO] shader module destroyed");
 }
 
 bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
@@ -660,9 +852,7 @@ VisualServer::~VisualServer(){
 bool VisualServer::init(){
 
 	createWindow();
-	vulkanServer.create(&windowData);
-
-	return true;
+	return vulkanServer.create(&windowData);
 }
 
 void VisualServer::terminate(){

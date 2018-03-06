@@ -12,9 +12,13 @@ shaders_compile:
 export_pkg:
 	export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH) # Location where to find glfw3.pc
 
+# PKG_CONFIG_PATH Location where to find glfw3.pc
+#all: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
 all: shaders_compile export_pkg main.cpp
 	g++ $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan
 
+# PKG_CONFIG_PATH Location where to find glfw3.pc
+#debug: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
 debug: shaders_compile export_pkg main.cpp
 	g++ -ggdb $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan.debug
 

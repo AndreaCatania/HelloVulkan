@@ -82,6 +82,9 @@ public:
 	bool createGraphicsPipeline();
 	void destroyGraphicsPipeline();
 
+	VkShaderModule createShaderModule(vector<char> &shaderBytecode);
+	void destroyShaderModule(VkShaderModule &shaderModule);
+
 private:
 	const WindowData* windowData;
 
@@ -103,6 +106,11 @@ private:
 	VkExtent2D swapchainExtent;
 
 	vector<VkImageView> swapchainImageViews;
+
+	VkShaderModule vertShaderModule;
+	VkShaderModule fragShaderModule;
+
+	VkPipelineLayout pipelineLayout;
 
 	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
