@@ -5,21 +5,25 @@ LDFLAGS = -L$(VULKAN_SDK_PATH)/lib `pkg-config --static --libs glfw3` -lvulkan
 
 SOURCES = main.cpp VisualServer.cpp
 
+shaders_compile:
+	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.vert -o ./shaders/bin/vert.spv
+	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.frag -o ./shaders/bin/frag.spv
+
 export_pkg:
 	export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH) # Location where to find glfw3.pc
 
-all: export_pkg main.cpp
-	g++ $(CFLAGS) ${SOURCES} $(LDFLAGS) -o HelloVulkan
+all: shaders_compile export_pkg main.cpp
+	g++ $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan
 
-debug: export_pkg main.cpp
-	g++ -ggdb $(CFLAGS) ${SOURCES} $(LDFLAGS) -o HelloVulkan.debug
+debug: shaders_compile export_pkg main.cpp
+	g++ -ggdb $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan.debug
 
 clean:
-	rm -f HelloVulkan
-	rm -f HelloVulkan.debug
+	rm -f ./bin/*
+	rm -f ./shaders/bin/*
 
 run:
-	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./HelloVulkan
+	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./bin/HelloVulkan
 
 rundebug:
-	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./HelloVulkan.debug
+	LD_LIBRARY_PATH=$(VULKAN_SDK_PATH)/lib VK_LAYER_PATH=$(VULKAN_SDK_PATH)/etc/explicit_layer.d ./bin/HelloVulkan.debug
