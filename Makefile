@@ -9,17 +9,14 @@ shaders_compile:
 	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.vert -o ./shaders/bin/vert.spv
 	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.frag -o ./shaders/bin/frag.spv
 
-export_pkg:
-	export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH) # Location where to find glfw3.pc
-
 # PKG_CONFIG_PATH Location where to find glfw3.pc
-#all: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
+all: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
 all: shaders_compile export_pkg main.cpp
 	g++ $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan
 
 # PKG_CONFIG_PATH Location where to find glfw3.pc
-#debug: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
-debug: shaders_compile export_pkg main.cpp
+debug: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
+debug: shaders_compile main.cpp
 	g++ -ggdb $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan.debug
 
 clean:

@@ -47,6 +47,47 @@ public:
 	bool create(const WindowData* p_windowData);
 	void destroy();
 
+	void draw();
+
+private:
+	const WindowData* windowData;
+
+	VkInstance instance;
+	VkDebugReportCallbackEXT debugCallback;
+	VkSurfaceKHR surface;
+	VkPhysicalDevice physicalDevice; // Destroyed automatically when instance is cleared
+	VkDevice device;
+	VkQueue graphicsQueue;
+	VkQueue presentationQueue;
+	VkSwapchainKHR swapchain;
+
+	vector<const char*> layers;
+	vector<const char*> deviceExtensions;
+
+	vector<VkImage> swapchainImages;
+
+	VkFormat swapchainImageFormat;
+	VkExtent2D swapchainExtent;
+
+	vector<VkImageView> swapchainImageViews;
+
+	VkShaderModule vertShaderModule;
+	VkShaderModule fragShaderModule;
+
+	VkRenderPass renderPass;
+	VkPipelineLayout pipelineLayout;
+	VkPipeline graphicsPipeline;
+
+	vector<VkFramebuffer> swapchainFramebuffers;
+
+	VkCommandPool commandPool;
+
+	vector<VkCommandBuffer> commandBuffers; // Doesn't required destruction
+
+	VkSemaphore imageAvailableSemaphore;
+	VkSemaphore renderFinishedSemaphore;
+private:
+
 	bool createInstance();
 	void destroyInstance();
 
@@ -79,38 +120,27 @@ public:
 	bool createImageView();
 	void destroyImageView();
 
+	bool createRenderPass();
+	void destroyRenderPass();
+
 	bool createGraphicsPipeline();
 	void destroyGraphicsPipeline();
 
 	VkShaderModule createShaderModule(vector<char> &shaderBytecode);
 	void destroyShaderModule(VkShaderModule &shaderModule);
 
-private:
-	const WindowData* windowData;
+	bool createFramebuffers();
+	void destroyFramebuffers();
 
-	VkInstance instance;
-	VkDebugReportCallbackEXT debugCallback;
-	VkSurfaceKHR surface;
-	VkPhysicalDevice physicalDevice; // Destroyed automatically when instance is cleared
-	VkDevice device;
-	VkQueue graphicsQueue;
-	VkQueue presentationQueue;
-	VkSwapchainKHR swapchain;
+	bool createCommandPool();
+	void destroyCommandPool();
 
-	vector<const char*> layers;
-	vector<const char*> deviceExtensions;
+	bool allocateCommandBuffers();
 
-	vector<VkImage> swapchainImages;
+	void beginCommandBuffers();
 
-	VkFormat swapchainImageFormat;
-	VkExtent2D swapchainExtent;
-
-	vector<VkImageView> swapchainImageViews;
-
-	VkShaderModule vertShaderModule;
-	VkShaderModule fragShaderModule;
-
-	VkPipelineLayout pipelineLayout;
+	bool createSemaphores();
+	void destroySemaphores();
 
 	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);

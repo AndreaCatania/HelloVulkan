@@ -58,7 +58,12 @@ VulkanServer::VulkanServer() :
 	swapchain(VK_NULL_HANDLE),
 	vertShaderModule(VK_NULL_HANDLE),
 	fragShaderModule(VK_NULL_HANDLE),
-	pipelineLayout(VK_NULL_HANDLE)
+	renderPass(VK_NULL_HANDLE),
+	pipelineLayout(VK_NULL_HANDLE),
+	graphicsPipeline(VK_NULL_HANDLE),
+	commandPool(VK_NULL_HANDLE),
+	imageAvailableSemaphore(VK_NULL_HANDLE),
+	renderFinishedSemaphore(VK_NULL_HANDLE)
 {
 	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 }
@@ -89,20 +94,48 @@ bool VulkanServer::create(const WindowData* p_windowData){
 	if( !createLogicalDevice() )
 		return false;
 
+	lockupDeviceQueue();
+
 	if( !createSwapChain() )
 		return false;
 
 	if( !createImageView() )
 		return false;
 
+	if( !createRenderPass() )
+		return false;
+
 	if( !createGraphicsPipeline() )
+		return false;
+
+	if( !createFramebuffers() )
+		return false;
+
+	if( !createCommandPool() )
+		return false;
+
+	if( !allocateCommandBuffers() )
+		return false;
+
+	beginCommandBuffers();
+
+	if( !createSemaphores() )
 		return false;
 
 	return true;
 }
 
 void VulkanServer::destroy(){
+
+	// assert that the device has finished all before cleanup
+	if(device!=VK_NULL_HANDLE)
+		vkDeviceWaitIdle(device);
+
+	destroySemaphores();
+	destroyCommandPool();
+	destroyFramebuffers();
 	destroyGraphicsPipeline();
+	destroyRenderPass();
 	destroyImageView();
 	destroySwapChain();
 	destroyLogicalDevice();
@@ -110,6 +143,52 @@ void VulkanServer::destroy(){
 	destroySurface();
 	destroyInstance();
 	windowData = nullptr;
+}
+
+#define TIMEOUT_NANOSEC 3.6e+12 // 1 hour
+
+void VulkanServer::draw(){
+
+	// wait the presentQueue is idle to avoid validation layer to memory leak when it's not syn with GPU
+	vkQueueWaitIdle(presentationQueue);
+
+	// Acquire the next image
+	uint32_t imageIndex;
+	vkAcquireNextImageKHR(device, swapchain, TIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+	// Submit draw commands
+	VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
+	VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+
+	VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
+
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = signalSemaphores;
+
+	if( VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) ){
+		print("[ERROR not handled] Error during queue submission");
+		return;
+	}
+
+	// Present
+	VkPresentInfoKHR presInfo = {};
+	presInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presInfo.waitSemaphoreCount = 1;
+	presInfo.pWaitSemaphores = signalSemaphores;
+	presInfo.swapchainCount = 1;
+	presInfo.pSwapchains = &swapchain;
+	presInfo.pImageIndices = &imageIndex;
+
+	vkQueuePresentKHR(presentationQueue, &presInfo);
+
 }
 
 bool VulkanServer::createInstance(){
@@ -173,6 +252,7 @@ void VulkanServer::destroyInstance(){
 	if(instance==VK_NULL_HANDLE)
 		return;
 	vkDestroyInstance(instance, nullptr);
+	instance = VK_NULL_HANDLE;
 	print("[INFO] Vulkan instance destroyed");
 }
 
@@ -213,6 +293,7 @@ void VulkanServer::destroyDebugCallback(){
 	}
 
 	func(instance, debugCallback, nullptr);
+	debugCallback = VK_NULL_HANDLE;
 	print("[INFO] Debug callback destroyed");
 }
 
@@ -231,6 +312,7 @@ void VulkanServer::destroySurface(){
 	if(surface==VK_NULL_HANDLE)
 		return;
 	vkDestroySurfaceKHR(instance, surface, nullptr);
+	surface = VK_NULL_HANDLE;
 }
 
 bool VulkanServer::pickPhysicalDevice(){
@@ -284,6 +366,7 @@ bool VulkanServer::createLogicalDevice(){
 		presentationQueueCreateInfo.queueFamilyIndex = queueIndices.presentationFamilyIndex;
 		presentationQueueCreateInfo.queueCount = 1;
 		presentationQueueCreateInfo.pQueuePriorities = &priority;
+
 		queueCreateInfoArray.push_back(presentationQueueCreateInfo);
 	}
 
@@ -298,7 +381,6 @@ bool VulkanServer::createLogicalDevice(){
 	deviceCreateInfos.ppEnabledExtensionNames = deviceExtensions.data();
 
 	if(enableValidationLayer()){
-
 		deviceCreateInfos.enabledLayerCount = layers.size();
 		deviceCreateInfos.ppEnabledLayerNames = layers.data();
 	}else{
@@ -319,6 +401,7 @@ void VulkanServer::destroyLogicalDevice(){
 	if(device==VK_NULL_HANDLE)
 		return;
 	vkDestroyDevice(device, nullptr);
+	device = VK_NULL_HANDLE;
 	print("[INFO] Local device destroyed");
 }
 
@@ -566,7 +649,63 @@ void VulkanServer::destroyImageView(){
 
 		vkDestroyImageView(device, swapchainImageViews[i], nullptr );
 	}
+	swapchainImageViews.clear();
 	print("[INFO] Destroyed image views");
+}
+
+bool VulkanServer::createRenderPass(){
+
+	VkAttachmentDescription colorAttachmentDesc = {};
+	colorAttachmentDesc.format = swapchainImageFormat;
+	colorAttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+	colorAttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	colorAttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachmentDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	colorAttachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	colorAttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	VkAttachmentReference colorAttachmentRef = {};
+	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpassDesc = {};
+	subpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpassDesc.colorAttachmentCount = 1;
+	subpassDesc.pColorAttachments = &colorAttachmentRef;
+
+	VkSubpassDependency dependency = {};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+	VkRenderPassCreateInfo renderPassCreateInfo = {};
+	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassCreateInfo.attachmentCount = 1;
+	renderPassCreateInfo.pAttachments = &colorAttachmentDesc;
+	renderPassCreateInfo.subpassCount = 1;
+	renderPassCreateInfo.pSubpasses = &subpassDesc;
+	renderPassCreateInfo.dependencyCount = 1;
+	renderPassCreateInfo.pDependencies = &dependency;
+
+	VkResult res = vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass);
+	if(VK_SUCCESS != res){
+		print("[ERROR] Render pass creation fail");
+		return false;
+	}
+
+	print("[INFO] Render pass created");
+	return true;
+}
+
+void VulkanServer::destroyRenderPass(){
+	if(VK_NULL_HANDLE==renderPass)
+		return;
+	vkDestroyRenderPass(device, renderPass, nullptr);
+	renderPass = VK_NULL_HANDLE;
 }
 
 #define SHADER_VERTEX_PATH "./shaders/bin/vert.spv"
@@ -691,29 +830,65 @@ bool VulkanServer::createGraphicsPipeline(){
 	colorBlendCreateInfo.pAttachments = &colorBlendAttachment;
 
 /// Pipeline layout (used to specify uniform variables)
-	VkPipelineLayoutCreateInfo layoutCreateInfo = {};
-	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	layoutCreateInfo.setLayoutCount = 0;
+	{
+		VkPipelineLayoutCreateInfo layoutCreateInfo = {};
+		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+		layoutCreateInfo.setLayoutCount = 0;
 
-	if(VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout)){
-		print("[ERROR] Failed to create pipeline layout");
+		if(VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout)){
+			print("[ERROR] Failed to create pipeline layout");
+			return false;
+		}
+	}
+
+/// Create pipeline
+
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo = {};
+	pipelineCreateInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+	pipelineCreateInfo.stageCount = 2;
+	pipelineCreateInfo.pStages = shaderStages.data();
+	pipelineCreateInfo.pVertexInputState = &vertexInputCreateInfo;
+	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyCreateInfo;
+	pipelineCreateInfo.pViewportState = &viewportCreateInfo;
+	pipelineCreateInfo.pRasterizationState = &rasterizerCreateInfo;
+	pipelineCreateInfo.pMultisampleState = &multisamplingCreateInfo;
+	pipelineCreateInfo.pColorBlendState = &colorBlendCreateInfo;
+	pipelineCreateInfo.layout = pipelineLayout;
+
+	// Specifies which subpass of render pass use this pipeline
+	pipelineCreateInfo.renderPass = renderPass;
+	pipelineCreateInfo.subpass = 0;
+
+	VkResult res = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo, nullptr, &graphicsPipeline);
+	if(res != VK_SUCCESS){
+		print("[ERROR] Pipeline creation failed");
 		return false;
 	}
 
+	print("[INFO] Pipeline created");
 	return true;
 }
 
 void VulkanServer::destroyGraphicsPipeline(){
 
-	if(pipelineLayout!=VK_NULL_HANDLE){
+	if(graphicsPipeline != VK_NULL_HANDLE){
+		vkDestroyPipeline(device, graphicsPipeline, nullptr);
+		graphicsPipeline = VK_NULL_HANDLE;
+		print("[INFO] pipeline destroyed");
+	}
+
+	if(pipelineLayout != VK_NULL_HANDLE){
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+		pipelineLayout = VK_NULL_HANDLE;
 		print("[INFO] pipeline layout destroyed ");
 	}
 
 	destroyShaderModule(vertShaderModule);
 	destroyShaderModule(fragShaderModule);
+	vertShaderModule = VK_NULL_HANDLE;
+	fragShaderModule = VK_NULL_HANDLE;
 
-	print("[INFO] pipeline destroyed");
+	print("[INFO] shader modules destroyed");
 }
 
 VkShaderModule VulkanServer::createShaderModule(vector<char> &shaderBytecode){
@@ -742,7 +917,166 @@ void VulkanServer::destroyShaderModule(VkShaderModule &shaderModule){
 		return;
 
 	vkDestroyShaderModule(device, shaderModule, nullptr);
+	shaderModule = VK_NULL_HANDLE;
 	print("[INFO] shader module destroyed");
+}
+
+bool VulkanServer::createFramebuffers(){
+
+	swapchainFramebuffers.resize(swapchainImageViews.size());
+
+	bool error = false;
+	for(int i = swapchainFramebuffers.size() - 1; 0<=i; --i ){
+
+		VkFramebufferCreateInfo bufferCreateInfo = {};
+		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		bufferCreateInfo.renderPass = renderPass;
+		bufferCreateInfo.attachmentCount = 1;
+		bufferCreateInfo.pAttachments = &swapchainImageViews[i];
+		bufferCreateInfo.width = swapchainExtent.width;
+		bufferCreateInfo.height = swapchainExtent.height;
+		bufferCreateInfo.layers = 1;
+
+		VkResult res = vkCreateFramebuffer(device, &bufferCreateInfo, nullptr, &swapchainFramebuffers[i]);
+		if( res != VK_SUCCESS ){
+			swapchainFramebuffers[i] = VK_NULL_HANDLE;
+			error = true;
+		}
+	}
+
+	print("[INFO] Framebuffers created");
+	return true;
+}
+
+void VulkanServer::destroyFramebuffers(){
+
+	for(int i = swapchainFramebuffers.size() - 1; 0<=i; --i ){
+
+		if( swapchainFramebuffers[i] == VK_NULL_HANDLE )
+			continue;
+
+		vkDestroyFramebuffer(device, swapchainFramebuffers[i], nullptr);
+	}
+
+	swapchainFramebuffers.clear();
+
+}
+
+bool VulkanServer::createCommandPool(){
+	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
+
+	VkCommandPoolCreateInfo commandPoolCreateInfo = {};
+	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolCreateInfo.queueFamilyIndex = queueIndices.graphicsFamilyIndex;
+
+	VkResult res = vkCreateCommandPool(device, &commandPoolCreateInfo, nullptr, &commandPool);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Command pool creation failed");
+		return false;
+	}
+
+	print("[INFO] Command pool craeted");
+	return true;
+}
+
+void VulkanServer::destroyCommandPool(){
+	if(commandPool == VK_NULL_HANDLE)
+		return;
+
+	vkDestroyCommandPool(device, commandPool, nullptr);
+	commandPool = VK_NULL_HANDLE;
+	print("[INFO] Command pool destroyed");
+
+	// Since the command buffers are destroyed by this function here I want clear it
+	commandBuffers.clear();
+}
+
+bool VulkanServer::allocateCommandBuffers(){
+	// Doesn't require destructions (it's performed automatically during the destruction of command pool)
+
+	commandBuffers.resize(swapchainImages.size());
+
+	VkCommandBufferAllocateInfo allocateInfo = {};
+	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocateInfo.commandPool = commandPool;
+	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocateInfo.commandBufferCount = (uint32_t) commandBuffers.size();
+
+	if(VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, commandBuffers.data())){
+		print("[ERROR] Command buffer allocation fail");
+		return false;
+	}
+	print("[INFO] command buffers allocated");
+	return true;
+}
+
+void VulkanServer::beginCommandBuffers(){
+	for(int i = commandBuffers.size() - 1; 0<=i; --i){
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+
+		// Begin command buffer
+		vkBeginCommandBuffer(commandBuffers[i], &beginInfo);
+
+		VkRenderPassBeginInfo renderPassBeginInfo = {};
+		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassBeginInfo.renderPass = renderPass;
+		renderPassBeginInfo.framebuffer = swapchainFramebuffers[i];
+		renderPassBeginInfo.renderArea.offset = {0,0};
+		renderPassBeginInfo.renderArea.extent = swapchainExtent;
+		renderPassBeginInfo.clearValueCount = 1;
+		VkClearValue clearColor = {0.,0.,0.,1.};
+		renderPassBeginInfo.pClearValues = &clearColor;
+
+		// Begin render pass
+		vkCmdBeginRenderPass(commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		// Bind graphics pipeline
+		vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+		// Draw the triangle
+		vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+
+		vkCmdEndRenderPass(commandBuffers[i]);
+
+		if(VK_SUCCESS != vkEndCommandBuffer(commandBuffers[i])){
+			print("[ERROR - not handled] end render pass failed");
+		}
+	}
+	print("[INFO] Command buffers initializated");
+
+
+}
+
+bool VulkanServer::createSemaphores(){
+
+	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	VkResult imgRes = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &imageAvailableSemaphore);
+	VkResult rendRes = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
+
+	if(imgRes!=VK_SUCCESS || rendRes!=VK_SUCCESS){
+		print("[ERROR] Semaphore creation failed");
+		return false;
+	}
+
+	print("[INFO] semaphores created");
+	return true;
+}
+
+void VulkanServer::destroySemaphores(){
+
+	if(imageAvailableSemaphore != VK_NULL_HANDLE){
+		vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
+	}
+
+	if(renderFinishedSemaphore != VK_NULL_HANDLE){
+		vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
+	}
+
+	print("[INFO] Semaphores destroyed");
 }
 
 bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
@@ -866,6 +1200,7 @@ bool VisualServer::can_step(){
 
 void VisualServer::step(){
 	glfwPollEvents();
+	vulkanServer.draw();
 }
 
 void VisualServer::createWindow(){
