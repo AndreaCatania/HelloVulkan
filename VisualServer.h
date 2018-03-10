@@ -2,18 +2,13 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-
+#include "libs/glm/glm.hpp"
 #include <string>
 #include <vector>
+#include <array>
 #include <cstring>
 
 using namespace std;
-
-struct WindowData{
-	GLFWwindow* window;
-	int width;
-	int height;
-};
 
 class GLFWwindow;
 
@@ -37,7 +32,7 @@ class GLFWwindow;
 //     |                                                                                        |
 //     |-> Render pass <---------------|                                                        |
 //     |                               |                                                        |
-//     |-> Pipeline ------------- regulate execution of pipeline by subpass                     |
+//     |-> Pipelines >-----------> regulate execution of pipeline by subpass                     |
 //     |-> [User command]                                                                       |
 //     |                                                                                        |
 //     V                                                                                        |
@@ -45,6 +40,32 @@ class GLFWwindow;
 //   Graphycs queue >---------------------------------------------------------------------------|
 //
 
+struct Vertex{
+	glm::vec2 pos;
+	glm::vec4 color;
+
+	static VkVertexInputBindingDescription getBindingDescription(){
+		VkVertexInputBindingDescription desc = {};
+		desc.binding = 0;
+		desc.stride = sizeof(Vertex);
+		desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		return desc;
+	}
+
+	static array<VkVertexInputAttributeDescription, 2> getAttributesDescription(){
+		array<VkVertexInputAttributeDescription, 2> attr;
+		attr[0].binding = 0;
+		attr[0].location = 0;
+		attr[0].format = VK_FORMAT_R32G32_SFLOAT;
+		attr[0].offset = offsetof(Vertex, pos);
+
+		attr[1].binding = 0;
+		attr[1].location = 1;
+		attr[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		attr[1].offset = offsetof(Vertex, color);
+		return attr;
+	}
+};
 
 class VulkanServer{
 public:
@@ -75,17 +96,17 @@ public:
 
 	bool enableValidationLayer();
 
-	bool create(const WindowData* p_windowData);
+	bool create(GLFWwindow* p_window);
 	void destroy();
 
 	void waitIdle();
 
-	void onWindowResize();
-
 	void draw();
 
+	void add_vertices(const vector<Vertex> &p_vertices);
+
 private:
-	const WindowData* windowData;
+	GLFWwindow* window;
 
 	VkInstance instance;
 	VkDebugReportCallbackEXT debugCallback;
@@ -114,6 +135,9 @@ private:
 	VkPipeline graphicsPipeline;
 
 	vector<VkFramebuffer> swapchainFramebuffers;
+
+	VkBuffer vertexBuffer;
+	VkDeviceMemory vertexBufferMemory;
 
 	VkCommandPool commandPool;
 
@@ -182,6 +206,14 @@ private:
 	bool createFramebuffers();
 	void destroyFramebuffers();
 
+	// TODO the vertex buffer is not handled correctly, it's necessary to change it
+	// Each "mesh" should have its vertex buffer
+	bool createVertexBuffer();
+	void destroyVertexBuffer();
+
+	// typeBits indicate the suitable types of memory for the buffer
+	int32_t chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags);
+
 	// The command pool is an opaque object that is used to allocate command buffers easily
 	bool createCommandPool();
 	void destroyCommandPool();
@@ -206,6 +238,9 @@ private:
 
 	// Return the ID in the array of selected device
 	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device);
+
+private:
+	void recreateSwapchain();
 };
 
 class VisualServer
@@ -213,7 +248,7 @@ class VisualServer
 public:
 	friend class VulkanServer;
 
-	WindowData windowData;
+	GLFWwindow* window;
 
 	VisualServer();
 	~VisualServer();
@@ -224,7 +259,7 @@ public:
 	bool can_step();
 	void step();
 
-	static void windowResized(GLFWwindow* p_window, int p_width, int p_height);
+	void add_vertices(const vector<Vertex>& p_vertices);
 
 private:
 	VulkanServer vulkanServer;

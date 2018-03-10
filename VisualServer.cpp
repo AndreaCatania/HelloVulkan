@@ -47,7 +47,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 }
 
 VulkanServer::VulkanServer() :
-	windowData(nullptr),
+	window(nullptr),
 	instance(VK_NULL_HANDLE),
 	debugCallback(VK_NULL_HANDLE),
 	surface(VK_NULL_HANDLE),
@@ -61,6 +61,8 @@ VulkanServer::VulkanServer() :
 	renderPass(VK_NULL_HANDLE),
 	pipelineLayout(VK_NULL_HANDLE),
 	graphicsPipeline(VK_NULL_HANDLE),
+	vertexBuffer(VK_NULL_HANDLE),
+	vertexBufferMemory(VK_NULL_HANDLE),
 	commandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
 	renderFinishedSemaphore(VK_NULL_HANDLE)
@@ -76,9 +78,9 @@ bool VulkanServer::enableValidationLayer(){
 #endif
 }
 
-bool VulkanServer::create(const WindowData* p_windowData){
+bool VulkanServer::create(GLFWwindow* p_window){
 
-	windowData = p_windowData;
+	window = p_window;
 
 	if( !createInstance() )
 		return false;
@@ -98,6 +100,9 @@ bool VulkanServer::create(const WindowData* p_windowData){
 	lockupDeviceQueue();
 
 	if( !createSwapchain() )
+		return false;
+
+	if( !createVertexBuffer() )
 		return false;
 
 	if( !createCommandPool() )
@@ -120,28 +125,19 @@ void VulkanServer::destroy(){
 
 	destroySemaphores();
 	destroyCommandPool();
+	destroyVertexBuffer();
 	destroySwapchain();
 	destroyLogicalDevice();
 	destroyDebugCallback();
 	destroySurface();
 	destroyInstance();
-	windowData = nullptr;
+	window = nullptr;
 }
 
 void VulkanServer::waitIdle(){
 	// assert that the device has finished all before cleanup
 	if(device!=VK_NULL_HANDLE)
 		vkDeviceWaitIdle(device);
-}
-
-void VulkanServer::onWindowResize(){
-
-	waitIdle();
-
-	// Recreate swapchain
-	destroySwapchain();
-	createSwapchain();
-	beginCommandBuffers();
 }
 
 #define TIMEOUT_NANOSEC 3.6e+12 // 1 hour
@@ -154,7 +150,12 @@ void VulkanServer::draw(){
 
 	// Acquire the next image
 	uint32_t imageIndex;
-	vkAcquireNextImageKHR(device, swapchain, TIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, TIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+	if(VK_ERROR_OUT_OF_DATE_KHR==acquireRes || VK_SUBOPTIMAL_KHR==acquireRes){
+		// Vulkan tell me that the surface is no more compatible, so is mandatory recreate the swap chain
+		recreateSwapchain();
+		return;
+	}
 
 	// Submit draw commands
 	VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
@@ -187,8 +188,28 @@ void VulkanServer::draw(){
 	presInfo.pSwapchains = &swapchain;
 	presInfo.pImageIndices = &imageIndex;
 
-	vkQueuePresentKHR(presentationQueue, &presInfo);
+	VkResult presentRes = vkQueuePresentKHR(presentationQueue, &presInfo);
+	if(VK_ERROR_OUT_OF_DATE_KHR==presentRes || VK_SUBOPTIMAL_KHR==presentRes){
+		// Vulkan tell me that the surface is no more compatible, so is mandatory recreate the swap chain
+		recreateSwapchain();
+		return;
+	}
+}
 
+void VulkanServer::add_vertices(const vector<Vertex>& p_vertices){
+
+	void *data;
+	VkDeviceSize offset = 0;
+	size_t size = sizeof(Vertex) * p_vertices.size();
+	VkResult res = vkMapMemory(device, vertexBufferMemory, offset, size, 0, &data);
+	if(res != VK_SUCCESS){
+		print("[ERROR - unhandled] - failed to map memory during vertices adding");
+		return;
+	}
+
+	memcpy(data, p_vertices.data(), size);
+
+	vkUnmapMemory(device, vertexBufferMemory);
 }
 
 bool VulkanServer::createInstance(){
@@ -298,7 +319,7 @@ void VulkanServer::destroyDebugCallback(){
 }
 
 bool VulkanServer::createSurface(){
-	VkResult res = glfwCreateWindowSurface(instance, windowData->window, nullptr, &surface);
+	VkResult res = glfwCreateWindowSurface(instance, window, nullptr, &surface);
 	if(res == VK_SUCCESS){
 		print("[INFO] surface created");
 		return true;
@@ -516,7 +537,9 @@ VkExtent2D VulkanServer::chooseExtent(const VkSurfaceCapabilitiesKHR &capabiliti
 	// When the extent is set to max this mean that we can set any value
 	// In this case we can set any value
 	// So I set the size of WIDTH and HEIGHT used for initialize Window
-	VkExtent2D actualExtent = {windowData->width, windowData->height};
+	int width, height;
+	glfwGetWindowSize(window, &width, &height);
+	VkExtent2D actualExtent = {(uint32_t)width, (uint32_t)height};
 
 	actualExtent.width = max(capabilities.minImageExtent.width, min(capabilities.maxImageExtent.width, actualExtent.width));
 	actualExtent.height = max(capabilities.minImageExtent.height, min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -797,8 +820,16 @@ bool VulkanServer::createGraphicsPipelines(){
 /// Vertex inputs
 	VkPipelineVertexInputStateCreateInfo vertexInputCreateInfo = {};
 	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputCreateInfo.vertexBindingDescriptionCount = 0;
-	vertexInputCreateInfo.vertexAttributeDescriptionCount = 0;
+
+	VkVertexInputBindingDescription vertexInputBindingDescription = Vertex::getBindingDescription();
+
+	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+	vertexInputCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
+
+	array<VkVertexInputAttributeDescription, 2> vertexInputAttributesDescription = Vertex::getAttributesDescription();
+
+	vertexInputCreateInfo.vertexAttributeDescriptionCount = vertexInputAttributesDescription.size();
+	vertexInputCreateInfo.pVertexAttributeDescriptions = vertexInputAttributesDescription.data();
 
 /// Input Assembly
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo = {};
@@ -996,6 +1027,80 @@ void VulkanServer::destroyFramebuffers(){
 
 }
 
+bool VulkanServer::createVertexBuffer(){
+
+	// Create buffer
+	VkBufferCreateInfo bufferCreateInfo = {};
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.size = sizeof(Vertex) * 1000; // Can store up to 1000 vertices
+	bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	VkResult res = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &vertexBuffer);
+	if(VK_SUCCESS!=res){
+		print("[ERROR] Vertex buffer creation error");
+		return false;
+	}
+
+	// Allocate memory of buffer
+	VkMemoryRequirements memoryRequirements;
+	vkGetBufferMemoryRequirements(device, vertexBuffer, &memoryRequirements);
+
+	// This flag: VK_MEMORY_PROPERTY_HOST_COHERENT_BIT is necessary to be sure that the written data are always available without any assertion
+	int32_t memTypeId = chooseMemoryType( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
+	if(0>memTypeId){
+		print("[ERROR] No suitable memory found for vertex buffer");
+		return false;
+	}
+
+	VkMemoryAllocateInfo memoryAllocationInfo = {};
+	memoryAllocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocationInfo.allocationSize = memoryRequirements.size;
+	memoryAllocationInfo.memoryTypeIndex = memTypeId;
+
+	res = vkAllocateMemory(device, &memoryAllocationInfo, nullptr, &vertexBufferMemory);
+	if( res!=VK_SUCCESS ){
+		print("[ERROR] Vertex buffer memory allocation failed");
+		return false;
+	}
+
+	// Bind buffer to memory
+	vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, /*offset*/0);
+
+	print("[INFO] Vertex buffer created");
+	return true;
+}
+
+void VulkanServer::destroyVertexBuffer(){
+
+	if(vertexBuffer==VK_NULL_HANDLE)
+		return;
+	vkDestroyBuffer(device, vertexBuffer, nullptr);
+	vertexBuffer = VK_NULL_HANDLE;
+
+	if(vertexBufferMemory==VK_NULL_HANDLE)
+		return;
+	vkFreeMemory(device, vertexBufferMemory, nullptr);
+	vertexBufferMemory = VK_NULL_HANDLE;
+}
+
+int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags){
+
+	VkPhysicalDeviceMemoryProperties memoryProps;
+	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProps);
+
+	for(int i = memoryProps.memoryTypeCount - 1; 0<=i; --i){
+		// Checks if the current type of memory is suitable for this buffer
+		if(p_typeBits & (1<<i) ){
+			if((memoryProps.memoryTypes[i].propertyFlags & p_propertyFlags) == p_propertyFlags){
+				return i;
+			}
+		}
+	}
+
+	return -1;
+}
+
 bool VulkanServer::createCommandPool(){
 	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
 
@@ -1069,7 +1174,11 @@ void VulkanServer::beginCommandBuffers(){
 		// Bind graphics pipeline
 		vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-		// Draw the triangle
+		// Bind vertex data
+		VkBuffer vertexBuffers[] = {vertexBuffer};
+		VkDeviceSize offsets[] = {0};
+		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
+		// Set draw call
 		vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffers[i]);
@@ -1208,7 +1317,17 @@ int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_dev
 	return -1;
 }
 
-VisualServer::VisualServer(){
+void VulkanServer::recreateSwapchain(){
+	waitIdle();
+
+	// Recreate swapchain
+	destroySwapchain();
+	createSwapchain();
+	beginCommandBuffers();
+}
+
+VisualServer::VisualServer()
+	: window(nullptr) {
 }
 
 VisualServer::~VisualServer(){
@@ -1218,7 +1337,7 @@ VisualServer::~VisualServer(){
 bool VisualServer::init(){
 
 	createWindow();
-	return vulkanServer.create(&windowData);
+	return vulkanServer.create(window);
 }
 
 void VisualServer::terminate(){
@@ -1227,7 +1346,7 @@ void VisualServer::terminate(){
 }
 
 bool VisualServer::can_step(){
-	return !glfwWindowShouldClose(windowData.window);
+	return !glfwWindowShouldClose(window);
 }
 
 void VisualServer::step(){
@@ -1235,16 +1354,11 @@ void VisualServer::step(){
 	vulkanServer.draw();
 }
 
-void VisualServer::windowResized(GLFWwindow* window, int width, int height){
-	VisualServer* vs = static_cast<VisualServer*>(glfwGetWindowUserPointer(window));
-	vs->windowData.width = width;
-	vs->windowData.height = height;
-	vs->vulkanServer.onWindowResize();
+void VisualServer::add_vertices(const vector<Vertex> &p_vertices){
+	vulkanServer.add_vertices(p_vertices);
 }
 
 void VisualServer::createWindow(){
-	windowData.width = INITIAL_WINDOW_WIDTH;
-	windowData.height = INITIAL_WINDOW_HEIGHT;
 
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -1252,12 +1366,10 @@ void VisualServer::createWindow(){
 	// Windows resize
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
-	windowData.window = glfwCreateWindow(windowData.width, windowData.height, "Hello Vulkan", nullptr, nullptr);
-	glfwSetWindowUserPointer(windowData.window, this);
-	glfwSetWindowSizeCallback(windowData.window, VisualServer::windowResized);
+	window = glfwCreateWindow(INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT, "Hello Vulkan", nullptr, nullptr);
 }
 
 void VisualServer::freeWindow(){
-	glfwDestroyWindow(windowData.window);
+	glfwDestroyWindow(window);
 	glfwTerminate();
 }
