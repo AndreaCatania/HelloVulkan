@@ -3,8 +3,8 @@
 #include <iostream>
 #include <fstream>
 
-#define WIDTH 800
-#define HEIGHT 600
+#define INITIAL_WINDOW_WIDTH 800
+#define INITIAL_WINDOW_HEIGHT 600
 
 void print(string c){
 	cout << c << endl;
@@ -77,6 +77,7 @@ bool VulkanServer::enableValidationLayer(){
 }
 
 bool VulkanServer::create(const WindowData* p_windowData){
+
 	windowData = p_windowData;
 
 	if( !createInstance() )
@@ -96,19 +97,7 @@ bool VulkanServer::create(const WindowData* p_windowData){
 
 	lockupDeviceQueue();
 
-	if( !createSwapChain() )
-		return false;
-
-	if( !createImageView() )
-		return false;
-
-	if( !createRenderPass() )
-		return false;
-
-	if( !createGraphicsPipeline() )
-		return false;
-
-	if( !createFramebuffers() )
+	if( !createSwapchain() )
 		return false;
 
 	if( !createCommandPool() )
@@ -127,17 +116,11 @@ bool VulkanServer::create(const WindowData* p_windowData){
 
 void VulkanServer::destroy(){
 
-	// assert that the device has finished all before cleanup
-	if(device!=VK_NULL_HANDLE)
-		vkDeviceWaitIdle(device);
+	waitIdle();
 
 	destroySemaphores();
 	destroyCommandPool();
-	destroyFramebuffers();
-	destroyGraphicsPipeline();
-	destroyRenderPass();
-	destroyImageView();
-	destroySwapChain();
+	destroySwapchain();
 	destroyLogicalDevice();
 	destroyDebugCallback();
 	destroySurface();
@@ -145,11 +128,28 @@ void VulkanServer::destroy(){
 	windowData = nullptr;
 }
 
+void VulkanServer::waitIdle(){
+	// assert that the device has finished all before cleanup
+	if(device!=VK_NULL_HANDLE)
+		vkDeviceWaitIdle(device);
+}
+
+void VulkanServer::onWindowResize(){
+
+	waitIdle();
+
+	// Recreate swapchain
+	destroySwapchain();
+	createSwapchain();
+	beginCommandBuffers();
+}
+
 #define TIMEOUT_NANOSEC 3.6e+12 // 1 hour
 
 void VulkanServer::draw(){
 
 	// wait the presentQueue is idle to avoid validation layer to memory leak when it's not syn with GPU
+	// This is very bad approach and should be used semaphores
 	vkQueueWaitIdle(presentationQueue);
 
 	// Acquire the next image
@@ -473,7 +473,7 @@ VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(VkPhys
 	return chainDetails;
 }
 
-VkSurfaceFormatKHR VulkanServer::chooseSwapSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats){
+VkSurfaceFormatKHR VulkanServer::chooseSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats){
 	// If the surface has not a preferred format
 	// That is the best case.
 	// It will return just a format with format field set to VK_FORMAT_UNDEFINED
@@ -486,7 +486,7 @@ VkSurfaceFormatKHR VulkanServer::chooseSwapSurfaceFormat(const vector<VkSurfaceF
 
 	// Choose the best format to use
 	for(VkSurfaceFormatKHR f : p_formats){
-		if(f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR){
+		if(f.format == VK_FORMAT_B8G8R8A8_UNORM && f.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR ){
 			return f;
 		}
 	}
@@ -495,7 +495,7 @@ VkSurfaceFormatKHR VulkanServer::chooseSwapSurfaceFormat(const vector<VkSurfaceF
 	return p_formats[0]; // TODO create an algorithm to pick the best format
 }
 
-VkPresentModeKHR VulkanServer::chooseSwapPresentMode(const vector<VkPresentModeKHR> &p_modes){
+VkPresentModeKHR VulkanServer::choosePresentMode(const vector<VkPresentModeKHR> &p_modes){
 
 	// This is guaranteed to be supported, but doesn't works so good
 	VkPresentModeKHR bestMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -512,11 +512,11 @@ VkPresentModeKHR VulkanServer::chooseSwapPresentMode(const vector<VkPresentModeK
 	return bestMode;
 }
 
-VkExtent2D VulkanServer::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities){
+VkExtent2D VulkanServer::chooseExtent(const VkSurfaceCapabilitiesKHR &capabilities){
 	// When the extent is set to max this mean that we can set any value
 	// In this case we can set any value
 	// So I set the size of WIDTH and HEIGHT used for initialize Window
-	VkExtent2D actualExtent = {WIDTH, HEIGHT};
+	VkExtent2D actualExtent = {windowData->width, windowData->height};
 
 	actualExtent.width = max(capabilities.minImageExtent.width, min(capabilities.maxImageExtent.width, actualExtent.width));
 	actualExtent.height = max(capabilities.minImageExtent.height, min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -524,16 +524,48 @@ VkExtent2D VulkanServer::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabi
 	return actualExtent;
 }
 
-bool VulkanServer::createSwapChain(){
+bool VulkanServer::createSwapchain(){
+
+	if( !createRawSwapchain() )
+		return false;
+
+	lockupSwapchainImages();
+
+	if( !createSwapchainImageViews() )
+		return false;
+
+	if( !createRenderPass() )
+		return false;
+
+	if( !createGraphicsPipelines() )
+		return false;
+
+	if( !createFramebuffers() )
+		return false;
+
+	return true;
+}
+
+void VulkanServer::destroySwapchain(){
+
+	destroyFramebuffers();
+	destroyGraphicsPipelines();
+	destroyRenderPass();
+	destroySwapchainImageViews();
+	destroyRawSwapchain();
+}
+
+bool VulkanServer::createRawSwapchain(){
 
 	SwapChainSupportDetails chainDetails = querySwapChainSupport(physicalDevice);
 
-	VkSurfaceFormatKHR format = chooseSwapSurfaceFormat(chainDetails.formats);
-	VkPresentModeKHR pMode = chooseSwapPresentMode(chainDetails.presentModes);
-	VkExtent2D extent2D = chooseSwapExtent(chainDetails.capabilities);
+	VkSurfaceFormatKHR format = chooseSurfaceFormat(chainDetails.formats);
+	VkPresentModeKHR pMode = choosePresentMode(chainDetails.presentModes);
+	VkExtent2D extent2D = chooseExtent(chainDetails.capabilities);
 
 	uint32_t imageCount = chainDetails.capabilities.minImageCount;
-	// Check it we can use triple buffer first
+	// Check it we can use triple buffer
+	// The mode MAILBOX is not required by vulkan to implement triple buffer
 	if(pMode == VK_PRESENT_MODE_MAILBOX_KHR){
 		++imageCount;
 		if(chainDetails.capabilities.maxImageCount > 0) // 0 means no limits
@@ -576,8 +608,6 @@ bool VulkanServer::createSwapChain(){
 		return false;
 	}
 
-	lockupSwapchainImages();
-
 	swapchainImageFormat = format.format;
 	swapchainExtent = extent2D;
 
@@ -585,7 +615,7 @@ bool VulkanServer::createSwapChain(){
 	return true;
 }
 
-void VulkanServer::destroySwapChain(){
+void VulkanServer::destroyRawSwapchain(){
 	if(swapchain==VK_NULL_HANDLE)
 		return;
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
@@ -600,10 +630,10 @@ void VulkanServer::lockupSwapchainImages(){
 	swapchainImages.resize(imagesCount);
 	vkGetSwapchainImagesKHR(device, swapchain, &imagesCount, swapchainImages.data());
 
-	print("[INFO] lockup images success");
+	print("[INFO] swapchain images lockup success");
 }
 
-bool VulkanServer::createImageView(){
+bool VulkanServer::createSwapchainImageViews(){
 
 	swapchainImageViews.resize(swapchainImages.size());
 
@@ -641,7 +671,7 @@ bool VulkanServer::createImageView(){
 	}
 }
 
-void VulkanServer::destroyImageView(){
+void VulkanServer::destroySwapchainImageViews(){
 	for(int i = swapchainImages.size() - 1; i>=0; --i){
 
 		if( swapchainImageViews[i] == VK_NULL_HANDLE )
@@ -655,6 +685,7 @@ void VulkanServer::destroyImageView(){
 
 bool VulkanServer::createRenderPass(){
 
+	// Description of attachment
 	VkAttachmentDescription colorAttachmentDesc = {};
 	colorAttachmentDesc.format = swapchainImageFormat;
 	colorAttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -665,15 +696,18 @@ bool VulkanServer::createRenderPass(){
 	colorAttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
+	// Reference to attachment description
 	VkAttachmentReference colorAttachmentRef = {};
-	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.attachment = 0; // ID of description
 	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+	// The subpass describe how an attachment should be treated during execution
 	VkSubpassDescription subpassDesc = {};
 	subpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpassDesc.colorAttachmentCount = 1;
 	subpassDesc.pColorAttachments = &colorAttachmentRef;
 
+	// The dependency is something that lead the subpass order, is like a "barrier"
 	VkSubpassDependency dependency = {};
 	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 	dependency.dstSubpass = 0;
@@ -711,7 +745,7 @@ void VulkanServer::destroyRenderPass(){
 #define SHADER_VERTEX_PATH "./shaders/bin/vert.spv"
 #define SHADER_FRAGMENT_PATH "shaders/bin/frag.spv"
 
-bool VulkanServer::createGraphicsPipeline(){
+bool VulkanServer::createGraphicsPipelines(){
 
 /// Load shaders
 	vector<char> vertexShaderBytecode;
@@ -869,7 +903,7 @@ bool VulkanServer::createGraphicsPipeline(){
 	return true;
 }
 
-void VulkanServer::destroyGraphicsPipeline(){
+void VulkanServer::destroyGraphicsPipelines(){
 
 	if(graphicsPipeline != VK_NULL_HANDLE){
 		vkDestroyPipeline(device, graphicsPipeline, nullptr);
@@ -1045,8 +1079,6 @@ void VulkanServer::beginCommandBuffers(){
 		}
 	}
 	print("[INFO] Command buffers initializated");
-
-
 }
 
 bool VulkanServer::createSemaphores(){
@@ -1203,11 +1235,26 @@ void VisualServer::step(){
 	vulkanServer.draw();
 }
 
+void VisualServer::windowResized(GLFWwindow* window, int width, int height){
+	VisualServer* vs = static_cast<VisualServer*>(glfwGetWindowUserPointer(window));
+	vs->windowData.width = width;
+	vs->windowData.height = height;
+	vs->vulkanServer.onWindowResize();
+}
+
 void VisualServer::createWindow(){
+	windowData.width = INITIAL_WINDOW_WIDTH;
+	windowData.height = INITIAL_WINDOW_HEIGHT;
+
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-	windowData.window = glfwCreateWindow(WIDTH, HEIGHT, "Hello Vulkan", nullptr, nullptr);
+
+	// Windows resize
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+	windowData.window = glfwCreateWindow(windowData.width, windowData.height, "Hello Vulkan", nullptr, nullptr);
+	glfwSetWindowUserPointer(windowData.window, this);
+	glfwSetWindowSizeCallback(windowData.window, VisualServer::windowResized);
 }
 
 void VisualServer::freeWindow(){

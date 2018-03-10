@@ -11,9 +11,40 @@ using namespace std;
 
 struct WindowData{
 	GLFWwindow* window;
+	int width;
+	int height;
 };
 
 class GLFWwindow;
+
+// RENDER IMAGE PROCESS
+// |
+// |-> Request next image from swapchain <------------------------------------------------|
+// |-> Submit commandBuffer of image returned by swapchain to GraphicsQueue               |
+// |               ^                                                                      |
+// |               |----------------------------------------------------------------------+-----|
+// |                                                                                      |     |
+// |-> Present rendered image by putting it in PresentationQueue                          |     |
+//                                                                                        |     |
+//                                                                                        |     |
+// Dependency scheme of: Swapchain, Renderpass, Pipeline, Framebuffer, Commandbuffer      |     |
+//                                                                                        |     |
+// Command buffer                    Swapchain >------------------------------------------|     |
+//     |                                |                                                       |
+//     |-> Frame buffer         |-------|                                                       |
+//     |       |                v                                                               |
+//     |       |-> Swapchain image view                                                         |
+//     |                                                                                        |
+//     |-> Render pass <---------------|                                                        |
+//     |                               |                                                        |
+//     |-> Pipeline ------------- regulate execution of pipeline by subpass                     |
+//     |-> [User command]                                                                       |
+//     |                                                                                        |
+//     V                                                                                        |
+//   Ready to be submitted to                                                                   |
+//   Graphycs queue >---------------------------------------------------------------------------|
+//
+
 
 class VulkanServer{
 public:
@@ -46,6 +77,10 @@ public:
 
 	bool create(const WindowData* p_windowData);
 	void destroy();
+
+	void waitIdle();
+
+	void onWindowResize();
 
 	void draw();
 
@@ -108,35 +143,59 @@ private:
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice p_device);
 
 	// Helper functions to create the swap chain
-	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats);
-	VkPresentModeKHR chooseSwapPresentMode(const vector<VkPresentModeKHR> &p_modes);
-	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
+	VkSurfaceFormatKHR chooseSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats);
+	VkPresentModeKHR choosePresentMode(const vector<VkPresentModeKHR> &p_modes);
+	VkExtent2D chooseExtent(const VkSurfaceCapabilitiesKHR &capabilities);
 
-	bool createSwapChain();
-	void destroySwapChain();
+	// This method is used to create the usable swap chain object
+	bool createSwapchain();
+	void destroySwapchain();
+
+	// This method is used to create the simple swap chain object
+	// The swapchain is the array that is used to hold all information about the image to show.
+	bool createRawSwapchain();
+	void destroyRawSwapchain();
 
 	void lockupSwapchainImages();
 
-	bool createImageView();
-	void destroyImageView();
+	bool createSwapchainImageViews();
+	void destroySwapchainImageViews();
 
+	// The render pass is an object that is used to organize the rendering process
+	// It doesn't have any rendering command nor resources informations
 	bool createRenderPass();
 	void destroyRenderPass();
 
-	bool createGraphicsPipeline();
-	void destroyGraphicsPipeline();
+	// The pipeline is the object that contains all commands of a particular rendering process
+	// Shader, Vertex inputs, viewports, etc..
+	// Each pipiline has a reference to a particular subpass of renderpass
+	// The pipeline will be created using renderpass informations
+	// The order of execution of particular pipeline depend on the renderpass
+	bool createGraphicsPipelines();
+	void destroyGraphicsPipelines();
 
 	VkShaderModule createShaderModule(vector<char> &shaderBytecode);
 	void destroyShaderModule(VkShaderModule &shaderModule);
 
+	// The framebuffer object represent the memory that will be used by renderpass
+	// The framebuffer is created using renderpass informations
 	bool createFramebuffers();
 	void destroyFramebuffers();
 
+	// The command pool is an opaque object that is used to allocate command buffers easily
 	bool createCommandPool();
 	void destroyCommandPool();
 
+	// Command buffer is an object where are stored all commands, here are stored all informations about
+	// renderpass, attachments, etc..
+	// It's possible to have two kind of command buffers primary and seconday
+	// The secondary can be executed by primary only, the primary can be submitted directly into queue
+	// This function only allocate a command buffer and doesn't initialize it
 	bool allocateCommandBuffers();
 
+	// This function take all commandBuffers and set it in executable state with all commands
+	// to execute
+	// This store the renderpass, so it should be submitted each time the swapchain is recreated
 	void beginCommandBuffers();
 
 	bool createSemaphores();
@@ -164,6 +223,8 @@ public:
 
 	bool can_step();
 	void step();
+
+	static void windowResized(GLFWwindow* p_window, int p_width, int p_height);
 
 private:
 	VulkanServer vulkanServer;
