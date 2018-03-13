@@ -15,10 +15,10 @@ class GLFWwindow;
 // RENDER IMAGE PROCESS
 // |
 // |-> Check if there are pending meshes to insert in the scene
-// |-> Request next image from swapchain <------------------------------------------------|
+// |-> Request next image from swapchain <------------------------------------------------\
 // |-> Submit commandBuffer of image returned by swapchain to GraphicsQueue               |
 // |               ^                                                                      |
-// |               |----------------------------------------------------------------------+-----|
+// |               |----------------------------------------------------------------------+-----\
 // |                                                                                      |     |
 // |-> Present rendered image by putting it in PresentationQueue                          |     |
 //                                                                                        |     |
@@ -28,22 +28,32 @@ class GLFWwindow;
 //                                                                                        |     |
 // DEPENDENCY SCHEME OF: Swapchain, Renderpass, Pipeline, Framebuffer, Commandbuffer      |     |
 //                                                                                        |     |
-// Command buffer                    Swapchain >------------------------------------------|     |
+// Command buffer                    Swapchain >------------------------------------------/     |
 //     |                                |                                                       |
-//     |-> Frame buffer         |-------|                                                       |
+//     |-> Frame buffer         |-------/                                                       |
 //     |       |                v                                                               |
-//     |       |-> Swapchain image view                                                         |
+//     |       \-> Swapchain image view                                                         |
 //     |                                                                                        |
-//     |-> Render pass <---------------|                                                        |
+//     |-> Render pass <---------------\                                                        |
 //     |                               |                                                        |
 //     |-> Pipelines >-----------> regulate execution of pipeline by subpass                    |
 //     |-> [User command]                                                                       |
 //     |                                                                                        |
 //     V                                                                                        |
 //   Ready to be submitted to                                                                   |
-//   Graphycs queue >---------------------------------------------------------------------------|
+//   Graphycs queue >---------------------------------------------------------------------------/
 //
-
+//
+//
+//
+//
+// VERTEX BUFFER
+//     Contains all informations of vertices of a mesh
+//
+// INDEX BUFFER
+//     Contains the indices (ordered) that compose all triangles of mesh.
+//     The GPU submit the vertex data of VERTEX BUFFER to the shader according to the index of INDEX BUFFER
+//
 
 struct Vertex{
 	glm::vec2 pos;
@@ -73,23 +83,24 @@ struct Vertex{
 };
 
 struct Triangle{
-	Vertex vertices[3];
-
+	uint32_t vertices[3];
 };
 
 struct Mesh{
+	vector<Vertex> vertices;
 	vector<Triangle> triangles;
 
-	// Return the size in bytes of this mesh
-	const size_t size() const {
-		return sizeof(Vertex) * 3 * triangles.size();
+	// Return the size in bytes of vertices
+	const size_t verticesSizeInBytes() const {
+		return sizeof(Vertex) * vertices.size();
 	}
 
-	const Triangle* data() const{
-		return triangles.data();
+	// return the size in bytes of triangles indices
+	const size_t trianglesSizeInBytes() const {
+		return sizeof(Triangle) * triangles.size();
 	}
 
-	const int getCountVertices() const{
+	const uint32_t getCountIndices() const{
 		return triangles.size() * 3;
 	}
 };
@@ -167,6 +178,9 @@ private:
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
 
+	VkBuffer indexBuffer;
+	VkDeviceMemory indexBufferMemory;
+
 	VkCommandPool graphicsCommandPool;
 
 	vector<VkCommandBuffer> drawCommandBuffers; // Used to draw things
@@ -184,9 +198,12 @@ private:
 	// This struct is used to know handle the memory of mesh
 	struct MeshHandle{
 		const Mesh *mesh;
-		size_t size;
-		uint32_t offset;
+		size_t verticesSize;
+		size_t indicesSize;
+		uint32_t vertexOffset;
+		uint32_t indexOffset;
 		VkBuffer vertexBuffer;
+		VkBuffer indexBuffer;
 	};
 
 	vector<MeshHandle> meshes;
@@ -258,6 +275,11 @@ private:
 	// Each "mesh" should have its vertex buffer
 	bool createVertexBuffer();
 	void destroyVertexBuffer();
+
+	// TODO the index buffer is not handled correctly, it's necessary to change it
+	// Each "mesh" should have its index buffer
+	bool createIndexBuffer();
+	void destroyIndexBuffer();
 
 	// typeBits indicate the suitable types of memory for the buffer
 	int32_t chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags);

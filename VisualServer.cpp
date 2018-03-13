@@ -63,6 +63,8 @@ VulkanServer::VulkanServer() :
 	graphicsPipeline(VK_NULL_HANDLE),
 	vertexBuffer(VK_NULL_HANDLE),
 	vertexBufferMemory(VK_NULL_HANDLE),
+	indexBuffer(VK_NULL_HANDLE),
+	indexBufferMemory(VK_NULL_HANDLE),
 	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
 	renderFinishedSemaphore(VK_NULL_HANDLE),
@@ -107,6 +109,9 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !createVertexBuffer() )
 		return false;
 
+	if( !createIndexBuffer() )
+		return false;
+
 	if( !createCommandPool() )
 		return false;
 
@@ -125,6 +130,7 @@ void VulkanServer::destroy(){
 
 	destroySyncObjects();
 	destroyCommandPool();
+	destroyIndexBuffer();
 	destroyVertexBuffer();
 	destroySwapchain();
 	destroyLogicalDevice();
@@ -206,10 +212,10 @@ void VulkanServer::draw(){
 
 void VulkanServer::add_mesh(const Mesh *p_mesh){
 
-	VkDeviceSize offset = 0;
-	size_t size = p_mesh->size();
+	VkDeviceSize vertexOffset = 0;
+	VkDeviceSize indexOffset = 0;
 
-	MeshHandle meshHandle({p_mesh, size, offset, vertexBuffer});
+	MeshHandle meshHandle({p_mesh, p_mesh->verticesSizeInBytes(), p_mesh->trianglesSizeInBytes(), vertexOffset, indexOffset, vertexBuffer, indexBuffer});
 	meshesCopyPending.push_back(meshHandle);
 }
 
@@ -243,7 +249,8 @@ void VulkanServer::processCopy(){
 		vkBeginCommandBuffer(copyCommandBuffer, &copyBeginInfo);
 		for(int m = meshesCopyPending.size() -1; 0<=m; --m){
 
-			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].vertexBuffer, meshesCopyPending[m].offset, meshesCopyPending[m].size, meshesCopyPending[m].mesh->data() );
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].vertexBuffer, meshesCopyPending[m].vertexOffset, meshesCopyPending[m].verticesSize, meshesCopyPending[m].mesh->vertices.data());
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].indexBuffer, meshesCopyPending[m].indexOffset, meshesCopyPending[m].indicesSize, meshesCopyPending[m].mesh->triangles.data());
 		}
 
 		if(VK_SUCCESS != vkEndCommandBuffer(copyCommandBuffer) ){
@@ -1104,6 +1111,21 @@ void VulkanServer::destroyVertexBuffer(){
 	destroyBuffer(vertexBuffer, vertexBufferMemory);
 }
 
+bool VulkanServer::createIndexBuffer(){
+	// 1000 Triangles
+	size_t allocatedMemory = createBuffer(sizeof(Triangle) * 1000,
+										  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+										  VK_SHARING_MODE_EXCLUSIVE,
+										  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+										  indexBuffer,
+										  indexBufferMemory);
+	return 0<allocatedMemory;
+}
+
+void VulkanServer::destroyIndexBuffer(){
+	destroyBuffer(indexBuffer, indexBufferMemory);
+}
+
 int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags){
 
 	VkPhysicalDeviceMemoryProperties memoryProps;
@@ -1212,13 +1234,13 @@ void VulkanServer::beginCommandBuffers(){
 
 				// Add buffers to bind
 				vertexBuffers[m] = meshes[m].vertexBuffer;
-				offsets[m] = meshes[m].offset;
+				offsets[m] = meshes[m].vertexOffset;
 			}
 			vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
-
 			// Draw buffered data
 			for(int m = 0, s = meshes.size(); m<s; ++m){
-				vkCmdDraw(drawCommandBuffers[i], meshes[m].mesh->getCountVertices(), 1, 0, 0);
+				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m].indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(drawCommandBuffers[i], meshes[m].mesh->getCountIndices(), 1, 0, 0, 0);
 			}
 		}
 

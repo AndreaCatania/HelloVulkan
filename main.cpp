@@ -7,11 +7,12 @@
 int main() {
 
 	Mesh mesh;
-	mesh.triangles.push_back(Triangle({Vertex({{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f, 1.f}}),
-									   Vertex({{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f, 1.f}}),
-									   Vertex({{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f, 1.f}})}
-									  )
-							 );
+	mesh.vertices.push_back(Vertex({{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f, 1.f}}));
+	mesh.vertices.push_back(Vertex({{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f, 1.f}}));
+	mesh.vertices.push_back(Vertex({{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f, 1.f}}));
+	mesh.vertices.push_back(Vertex({{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f, 1.f}}));
+	mesh.triangles.push_back(Triangle({0,1,2}));
+	mesh.triangles.push_back(Triangle({0,2,3}));
 
 	VisualServer vm;
 
