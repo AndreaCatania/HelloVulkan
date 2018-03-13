@@ -14,6 +14,7 @@ class GLFWwindow;
 
 // RENDER IMAGE PROCESS
 // |
+// |-> Check if there are pending meshes to insert in the scene
 // |-> Request next image from swapchain <------------------------------------------------|
 // |-> Submit commandBuffer of image returned by swapchain to GraphicsQueue               |
 // |               ^                                                                      |
@@ -22,7 +23,10 @@ class GLFWwindow;
 // |-> Present rendered image by putting it in PresentationQueue                          |     |
 //                                                                                        |     |
 //                                                                                        |     |
-// Dependency scheme of: Swapchain, Renderpass, Pipeline, Framebuffer, Commandbuffer      |     |
+//                                                                                        |     |
+//                                                                                        |     |
+//                                                                                        |     |
+// DEPENDENCY SCHEME OF: Swapchain, Renderpass, Pipeline, Framebuffer, Commandbuffer      |     |
 //                                                                                        |     |
 // Command buffer                    Swapchain >------------------------------------------|     |
 //     |                                |                                                       |
@@ -32,13 +36,14 @@ class GLFWwindow;
 //     |                                                                                        |
 //     |-> Render pass <---------------|                                                        |
 //     |                               |                                                        |
-//     |-> Pipelines >-----------> regulate execution of pipeline by subpass                     |
+//     |-> Pipelines >-----------> regulate execution of pipeline by subpass                    |
 //     |-> [User command]                                                                       |
 //     |                                                                                        |
 //     V                                                                                        |
 //   Ready to be submitted to                                                                   |
 //   Graphycs queue >---------------------------------------------------------------------------|
 //
+
 
 struct Vertex{
 	glm::vec2 pos;
@@ -64,6 +69,28 @@ struct Vertex{
 		attr[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 		attr[1].offset = offsetof(Vertex, color);
 		return attr;
+	}
+};
+
+struct Triangle{
+	Vertex vertices[3];
+
+};
+
+struct Mesh{
+	vector<Triangle> triangles;
+
+	// Return the size in bytes of this mesh
+	const size_t size() const {
+		return sizeof(Vertex) * 3 * triangles.size();
+	}
+
+	const Triangle* data() const{
+		return triangles.data();
+	}
+
+	const int getCountVertices() const{
+		return triangles.size() * 3;
 	}
 };
 
@@ -103,7 +130,8 @@ public:
 
 	void draw();
 
-	void add_vertices(const vector<Vertex> &p_vertices);
+	void add_mesh(const Mesh *p_mesh);
+	void processCopy();
 
 private:
 	GLFWwindow* window;
@@ -139,12 +167,32 @@ private:
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
 
-	VkCommandPool commandPool;
+	VkCommandPool graphicsCommandPool;
 
-	vector<VkCommandBuffer> commandBuffers; // Doesn't required destruction
+	vector<VkCommandBuffer> drawCommandBuffers; // Used to draw things
+	vector<VkFence> drawFinishFences;
+	VkCommandBuffer copyCommandBuffer; // Used to copy data to GPU
 
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
+
+	VkFence copyFinishFence;
+private:
+
+	bool reloadDrawCommandBuffer;
+
+	// This struct is used to know handle the memory of mesh
+	struct MeshHandle{
+		const Mesh *mesh;
+		size_t size;
+		uint32_t offset;
+		VkBuffer vertexBuffer;
+	};
+
+	vector<MeshHandle> meshes;
+	vector<MeshHandle> meshesCopyInProgress;
+	vector<MeshHandle> meshesCopyPending;
+
 private:
 
 	bool createInstance();
@@ -230,8 +278,8 @@ private:
 	// This store the renderpass, so it should be submitted each time the swapchain is recreated
 	void beginCommandBuffers();
 
-	bool createSemaphores();
-	void destroySemaphores();
+	bool createSyncObjects();
+	void destroySyncObjects();
 
 	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
@@ -241,6 +289,10 @@ private:
 
 private:
 	void recreateSwapchain();
+
+	// return the size of allocated memory, or 0 if error.
+	size_t createBuffer(VkDeviceSize p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VkMemoryPropertyFlags p_memoryTypeFlags, VkBuffer &r_buffer, VkDeviceMemory &r_memory);
+	void destroyBuffer(VkBuffer &r_buffer, VkDeviceMemory &r_memory);
 };
 
 class VisualServer
@@ -259,7 +311,7 @@ public:
 	bool can_step();
 	void step();
 
-	void add_vertices(const vector<Vertex>& p_vertices);
+	void add_mesh(const Mesh *p_mesh);
 
 private:
 	VulkanServer vulkanServer;

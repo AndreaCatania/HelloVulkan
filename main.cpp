@@ -6,17 +6,18 @@
 
 int main() {
 
-	const std::vector<Vertex> vertices = {
-		{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f, 1.f}},
-		{{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f, 1.f}},
-		{{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f, 1.f}}
-	};
+	Mesh mesh;
+	mesh.triangles.push_back(Triangle({Vertex({{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f, 1.f}}),
+									   Vertex({{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f, 1.f}}),
+									   Vertex({{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f, 1.f}})}
+									  )
+							 );
 
 	VisualServer vm;
 
 	if(vm.init()){
 
-		vm.add_vertices(vertices);
+		vm.add_mesh(&mesh);
 
 		while(vm.can_step()){
 			vm.step();

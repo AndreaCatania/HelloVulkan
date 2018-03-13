@@ -63,9 +63,11 @@ VulkanServer::VulkanServer() :
 	graphicsPipeline(VK_NULL_HANDLE),
 	vertexBuffer(VK_NULL_HANDLE),
 	vertexBufferMemory(VK_NULL_HANDLE),
-	commandPool(VK_NULL_HANDLE),
+	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
-	renderFinishedSemaphore(VK_NULL_HANDLE)
+	renderFinishedSemaphore(VK_NULL_HANDLE),
+	copyFinishFence(VK_NULL_HANDLE),
+	reloadDrawCommandBuffer(true)
 {
 	deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 }
@@ -111,9 +113,7 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !allocateCommandBuffers() )
 		return false;
 
-	beginCommandBuffers();
-
-	if( !createSemaphores() )
+	if( !createSyncObjects() )
 		return false;
 
 	return true;
@@ -123,7 +123,7 @@ void VulkanServer::destroy(){
 
 	waitIdle();
 
-	destroySemaphores();
+	destroySyncObjects();
 	destroyCommandPool();
 	destroyVertexBuffer();
 	destroySwapchain();
@@ -140,9 +140,16 @@ void VulkanServer::waitIdle(){
 		vkDeviceWaitIdle(device);
 }
 
-#define TIMEOUT_NANOSEC 3.6e+12 // 1 hour
+#define LONGTIMEOUT_NANOSEC 3.6e+12 // 1 hour
 
 void VulkanServer::draw(){
+
+	if(reloadDrawCommandBuffer){
+		beginCommandBuffers();
+		reloadDrawCommandBuffer = false;
+	}
+
+	processCopy();
 
 	// wait the presentQueue is idle to avoid validation layer to memory leak when it's not syn with GPU
 	// This is very bad approach and should be used semaphores
@@ -150,7 +157,7 @@ void VulkanServer::draw(){
 
 	// Acquire the next image
 	uint32_t imageIndex;
-	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, TIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, LONGTIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 	if(VK_ERROR_OUT_OF_DATE_KHR==acquireRes || VK_SUBOPTIMAL_KHR==acquireRes){
 		// Vulkan tell me that the surface is no more compatible, so is mandatory recreate the swap chain
 		recreateSwapchain();
@@ -167,14 +174,15 @@ void VulkanServer::draw(){
 	submitInfo.pWaitSemaphores = waitSemaphores;
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+	submitInfo.pCommandBuffers = &drawCommandBuffers[imageIndex];
 
 	VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
 
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
-	if( VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) ){
+	vkResetFences(device, 1, &drawFinishFences[imageIndex]);
+	if( VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFinishFences[imageIndex]) ){
 		print("[ERROR not handled] Error during queue submission");
 		return;
 	}
@@ -196,20 +204,72 @@ void VulkanServer::draw(){
 	}
 }
 
-void VulkanServer::add_vertices(const vector<Vertex>& p_vertices){
+void VulkanServer::add_mesh(const Mesh *p_mesh){
 
-	void *data;
 	VkDeviceSize offset = 0;
-	size_t size = sizeof(Vertex) * p_vertices.size();
-	VkResult res = vkMapMemory(device, vertexBufferMemory, offset, size, 0, &data);
-	if(res != VK_SUCCESS){
-		print("[ERROR - unhandled] - failed to map memory during vertices adding");
-		return;
+	size_t size = p_mesh->size();
+
+	MeshHandle meshHandle({p_mesh, size, offset, vertexBuffer});
+	meshesCopyPending.push_back(meshHandle);
+}
+
+void VulkanServer::processCopy(){
+	VkResult fenceStatus = vkGetFenceStatus(device, copyFinishFence);
+	if(fenceStatus!=VK_SUCCESS){
+		return; // Copy is in progress
 	}
 
-	memcpy(data, p_vertices.data(), size);
+	if(meshesCopyInProgress.size()>0){
 
-	vkUnmapMemory(device, vertexBufferMemory);
+		// Copy process end
+
+		// Clear command buffer
+		vkFreeCommandBuffers(device, graphicsCommandPool, 1,  &copyCommandBuffer);
+
+		meshes.insert(meshes.end(), meshesCopyInProgress.begin(), meshesCopyInProgress.end());
+		meshesCopyInProgress.clear();
+
+		reloadDrawCommandBuffer = true;
+	}
+
+	// Check if there are meshes to copy in pending
+	if(meshesCopyPending.size()>0){
+
+		// Start new copy
+		VkCommandBufferBeginInfo copyBeginInfo = {};
+		copyBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		copyBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(copyCommandBuffer, &copyBeginInfo);
+		for(int m = meshesCopyPending.size() -1; 0<=m; --m){
+
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].vertexBuffer, meshesCopyPending[m].offset, meshesCopyPending[m].size, meshesCopyPending[m].mesh->data() );
+		}
+
+		if(VK_SUCCESS != vkEndCommandBuffer(copyCommandBuffer) ){
+			print("[ERROR] Copy command buffer ending failed");
+			return;
+		}
+
+		VkSubmitInfo copySubmitInfo = {};
+		copySubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		copySubmitInfo.commandBufferCount = 1;
+		copySubmitInfo.pCommandBuffers = &copyCommandBuffer;
+
+		if( VK_SUCCESS != vkResetFences(device, 1, &copyFinishFence) ){
+			print("[ERROR] copy finish Fence reset error");
+			return;
+		}
+
+		if(VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &copySubmitInfo, copyFinishFence) ){
+			print("[ERROR] Copy command buffer submission failed");
+			return;
+		}
+
+		meshesCopyInProgress.insert(meshesCopyInProgress.end(), meshesCopyPending.begin(), meshesCopyPending.end());
+		meshesCopyPending.clear();
+	}
+
 }
 
 bool VulkanServer::createInstance(){
@@ -1029,59 +1089,19 @@ void VulkanServer::destroyFramebuffers(){
 
 bool VulkanServer::createVertexBuffer(){
 
-	// Create buffer
-	VkBufferCreateInfo bufferCreateInfo = {};
-	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferCreateInfo.size = sizeof(Vertex) * 1000; // Can store up to 1000 vertices
-	bufferCreateInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	// Can store up to 1000 vertices
+	size_t allocatedMemory = createBuffer(sizeof(Vertex) * 1000,
+				 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				 VK_SHARING_MODE_EXCLUSIVE,
+				 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				 vertexBuffer,
+				 vertexBufferMemory );
 
-	VkResult res = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &vertexBuffer);
-	if(VK_SUCCESS!=res){
-		print("[ERROR] Vertex buffer creation error");
-		return false;
-	}
-
-	// Allocate memory of buffer
-	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(device, vertexBuffer, &memoryRequirements);
-
-	// This flag: VK_MEMORY_PROPERTY_HOST_COHERENT_BIT is necessary to be sure that the written data are always available without any assertion
-	int32_t memTypeId = chooseMemoryType( memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT );
-	if(0>memTypeId){
-		print("[ERROR] No suitable memory found for vertex buffer");
-		return false;
-	}
-
-	VkMemoryAllocateInfo memoryAllocationInfo = {};
-	memoryAllocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	memoryAllocationInfo.allocationSize = memoryRequirements.size;
-	memoryAllocationInfo.memoryTypeIndex = memTypeId;
-
-	res = vkAllocateMemory(device, &memoryAllocationInfo, nullptr, &vertexBufferMemory);
-	if( res!=VK_SUCCESS ){
-		print("[ERROR] Vertex buffer memory allocation failed");
-		return false;
-	}
-
-	// Bind buffer to memory
-	vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, /*offset*/0);
-
-	print("[INFO] Vertex buffer created");
-	return true;
+	return 0<allocatedMemory;
 }
 
 void VulkanServer::destroyVertexBuffer(){
-
-	if(vertexBuffer==VK_NULL_HANDLE)
-		return;
-	vkDestroyBuffer(device, vertexBuffer, nullptr);
-	vertexBuffer = VK_NULL_HANDLE;
-
-	if(vertexBufferMemory==VK_NULL_HANDLE)
-		return;
-	vkFreeMemory(device, vertexBufferMemory, nullptr);
-	vertexBufferMemory = VK_NULL_HANDLE;
+	destroyBuffer(vertexBuffer, vertexBufferMemory);
 }
 
 int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags){
@@ -1107,8 +1127,9 @@ bool VulkanServer::createCommandPool(){
 	VkCommandPoolCreateInfo commandPoolCreateInfo = {};
 	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolCreateInfo.queueFamilyIndex = queueIndices.graphicsFamilyIndex;
+	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-	VkResult res = vkCreateCommandPool(device, &commandPoolCreateInfo, nullptr, &commandPool);
+	VkResult res = vkCreateCommandPool(device, &commandPoolCreateInfo, nullptr, &graphicsCommandPool);
 	if(res!=VK_SUCCESS){
 		print("[ERROR] Command pool creation failed");
 		return false;
@@ -1119,44 +1140,53 @@ bool VulkanServer::createCommandPool(){
 }
 
 void VulkanServer::destroyCommandPool(){
-	if(commandPool == VK_NULL_HANDLE)
+	if(graphicsCommandPool == VK_NULL_HANDLE)
 		return;
 
-	vkDestroyCommandPool(device, commandPool, nullptr);
-	commandPool = VK_NULL_HANDLE;
+	vkDestroyCommandPool(device, graphicsCommandPool, nullptr);
+	graphicsCommandPool = VK_NULL_HANDLE;
 	print("[INFO] Command pool destroyed");
 
 	// Since the command buffers are destroyed by this function here I want clear it
-	commandBuffers.clear();
+	drawCommandBuffers.clear();
 }
 
 bool VulkanServer::allocateCommandBuffers(){
 	// Doesn't require destructions (it's performed automatically during the destruction of command pool)
 
-	commandBuffers.resize(swapchainImages.size());
+	drawCommandBuffers.resize(swapchainImages.size());
 
 	VkCommandBufferAllocateInfo allocateInfo = {};
 	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocateInfo.commandPool = commandPool;
+	allocateInfo.commandPool = graphicsCommandPool;
 	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocateInfo.commandBufferCount = (uint32_t) commandBuffers.size();
+	allocateInfo.commandBufferCount = (uint32_t) drawCommandBuffers.size();
 
-	if(VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, commandBuffers.data())){
-		print("[ERROR] Command buffer allocation fail");
+	if(VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, drawCommandBuffers.data())){
+		print("[ERROR] Draw Command buffer allocation fail");
 		return false;
 	}
+
+	if(VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, &copyCommandBuffer)){
+		print("[ERROR] Copy command buffer allocation failed");
+		return false;
+	}
+
 	print("[INFO] command buffers allocated");
 	return true;
 }
 
 void VulkanServer::beginCommandBuffers(){
-	for(int i = commandBuffers.size() - 1; 0<=i; --i){
+
+	vkWaitForFences(device, drawFinishFences.size(), drawFinishFences.data(), true, LONGTIMEOUT_NANOSEC);
+	for(int i = drawCommandBuffers.size() - 1; 0<=i; --i){
+
 		VkCommandBufferBeginInfo beginInfo = {};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
 
 		// Begin command buffer
-		vkBeginCommandBuffer(commandBuffers[i], &beginInfo);
+		vkBeginCommandBuffer(drawCommandBuffers[i], &beginInfo);
 
 		VkRenderPassBeginInfo renderPassBeginInfo = {};
 		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1169,55 +1199,99 @@ void VulkanServer::beginCommandBuffers(){
 		renderPassBeginInfo.pClearValues = &clearColor;
 
 		// Begin render pass
-		vkCmdBeginRenderPass(commandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBeginRenderPass(drawCommandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// Bind graphics pipeline
-		vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+		vkCmdBindPipeline(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-		// Bind vertex data
-		VkBuffer vertexBuffers[] = {vertexBuffer};
-		VkDeviceSize offsets[] = {0};
-		vkCmdBindVertexBuffers(commandBuffers[i], 0, 1, vertexBuffers, offsets);
-		// Set draw call
-		vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+		if(meshes.size()>0){
+			// Bind buffers
+			vector<VkBuffer> vertexBuffers(meshes.size());
+			vector<VkDeviceSize> offsets(meshes.size());
+			for(int m = 0, s = meshes.size(); m<s; ++m){
 
-		vkCmdEndRenderPass(commandBuffers[i]);
+				// Add buffers to bind
+				vertexBuffers[m] = meshes[m].vertexBuffer;
+				offsets[m] = meshes[m].offset;
+			}
+			vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
 
-		if(VK_SUCCESS != vkEndCommandBuffer(commandBuffers[i])){
+			// Draw buffered data
+			for(int m = 0, s = meshes.size(); m<s; ++m){
+				vkCmdDraw(drawCommandBuffers[i], meshes[m].mesh->getCountVertices(), 1, 0, 0);
+			}
+		}
+
+		vkCmdEndRenderPass(drawCommandBuffers[i]);
+
+		if(VK_SUCCESS != vkEndCommandBuffer(drawCommandBuffers[i])){
 			print("[ERROR - not handled] end render pass failed");
 		}
 	}
 	print("[INFO] Command buffers initializated");
 }
 
-bool VulkanServer::createSemaphores(){
+bool VulkanServer::createSyncObjects(){
 
+	// Create semaphores
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
 	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-	VkResult imgRes = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &imageAvailableSemaphore);
-	VkResult rendRes = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
-
-	if(imgRes!=VK_SUCCESS || rendRes!=VK_SUCCESS){
+	VkResult res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &imageAvailableSemaphore);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Semaphore creation failed");
+		return false;
+	}
+	res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
+	if(res!=VK_SUCCESS){
 		print("[ERROR] Semaphore creation failed");
 		return false;
 	}
 
-	print("[INFO] semaphores created");
+	print("[INFO] Semaphores created");
+
+	// Create fences
+	VkFenceCreateInfo fenceCreateInfo = {};
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	res = vkCreateFence(device, &fenceCreateInfo, nullptr, &copyFinishFence);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Copy fences creation failed");
+		return false;
+	}
+
+	drawFinishFences.resize(drawCommandBuffers.size());
+	for(int i = drawFinishFences.size()-1; 0<=i; --i){
+		res = vkCreateFence(device, &fenceCreateInfo, nullptr, &drawFinishFences[i]);
+		if(res!=VK_SUCCESS){
+			print("[ERROR] Draw fences creation failed");
+			return false;
+		}
+	}
+
+	print("[INFO] Fences created");
 	return true;
 }
 
-void VulkanServer::destroySemaphores(){
+void VulkanServer::destroySyncObjects(){
 
 	if(imageAvailableSemaphore != VK_NULL_HANDLE){
 		vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
+		imageAvailableSemaphore = VK_NULL_HANDLE;
 	}
 
 	if(renderFinishedSemaphore != VK_NULL_HANDLE){
 		vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
+		renderFinishedSemaphore = VK_NULL_HANDLE;
 	}
 
-	print("[INFO] Semaphores destroyed");
+	if(copyFinishFence != VK_NULL_HANDLE){
+		vkDestroyFence(device, copyFinishFence, nullptr);
+		copyFinishFence = VK_NULL_HANDLE;
+	}
+
+	print("[INFO] Semaphores and Fences destroyed");
 }
 
 bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
@@ -1323,7 +1397,61 @@ void VulkanServer::recreateSwapchain(){
 	// Recreate swapchain
 	destroySwapchain();
 	createSwapchain();
-	beginCommandBuffers();
+	reloadDrawCommandBuffer = true;
+}
+
+size_t VulkanServer::createBuffer(size_t p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VkMemoryPropertyFlags p_memoryTypeFlags, VkBuffer &r_buffer, VkDeviceMemory &r_memory){
+
+	// Create buffer
+	VkBufferCreateInfo bufferCreateInfo = {};
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.size = p_size;
+	bufferCreateInfo.usage = p_usage;
+	bufferCreateInfo.sharingMode = p_sharingMode;
+
+	VkResult res = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &r_buffer);
+	if(VK_SUCCESS!=res){
+		print("[ERROR] Buffer creation error");
+		return 0;
+	}
+
+	// Allocate memory
+	VkMemoryRequirements memoryRequirements;
+	vkGetBufferMemoryRequirements(device, r_buffer, &memoryRequirements);
+
+	int32_t memTypeId = chooseMemoryType( memoryRequirements.memoryTypeBits, p_memoryTypeFlags );
+	if(0>memTypeId){
+		print("[ERROR] No suitable memory found for vertex buffer");
+		return 0;
+	}
+
+	VkMemoryAllocateInfo memoryAllocationInfo = {};
+	memoryAllocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocationInfo.allocationSize = memoryRequirements.size;
+	memoryAllocationInfo.memoryTypeIndex = memTypeId;
+
+	res = vkAllocateMemory(device, &memoryAllocationInfo, nullptr, &r_memory);
+	if( res!=VK_SUCCESS ){
+		print("[ERROR] Buffer memory allocation failed");
+		return 0;
+	}
+
+	// Bind buffer to memory
+	vkBindBufferMemory(device, r_buffer, r_memory, /*offset*/0);
+
+	return memoryRequirements.size;
+}
+
+void VulkanServer::destroyBuffer(VkBuffer &r_buffer, VkDeviceMemory &r_memory){
+	if(r_buffer!=VK_NULL_HANDLE){
+		vkDestroyBuffer(device, r_buffer, nullptr);
+		r_buffer = VK_NULL_HANDLE;
+	}
+
+	if(r_memory!=VK_NULL_HANDLE){
+		vkFreeMemory(device, r_memory, nullptr);
+		r_memory = VK_NULL_HANDLE;
+	}
 }
 
 VisualServer::VisualServer()
@@ -1354,8 +1482,8 @@ void VisualServer::step(){
 	vulkanServer.draw();
 }
 
-void VisualServer::add_vertices(const vector<Vertex> &p_vertices){
-	vulkanServer.add_vertices(p_vertices);
+void VisualServer::add_mesh(const Mesh *p_mesh){
+	vulkanServer.add_mesh(p_mesh);
 }
 
 void VisualServer::createWindow(){
