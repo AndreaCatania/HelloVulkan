@@ -8,6 +8,8 @@
 #include <array>
 #include <cstring>
 
+#include "libs/vma/vk_mem_alloc.h" // Includes only interfaces
+
 using namespace std;
 
 class GLFWwindow;
@@ -45,6 +47,7 @@ class GLFWwindow;
 //
 //
 //
+// Memory allocation is managed using library VulkanMemoryAllocator: https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
 //
 //
 // VERTEX BUFFER
@@ -52,7 +55,7 @@ class GLFWwindow;
 //
 // INDEX BUFFER
 //     Contains the indices (ordered) that compose all triangles of mesh.
-//     The GPU submit the vertex data of VERTEX BUFFER to the shader according to the index of INDEX BUFFER
+//     The GPU submit the vertex data of VERTEX BUFFER to the shader according to the in	dex of INDEX BUFFER
 //
 
 struct Vertex{
@@ -91,12 +94,12 @@ struct Mesh{
 	vector<Triangle> triangles;
 
 	// Return the size in bytes of vertices
-	const size_t verticesSizeInBytes() const {
+	const VkDeviceSize verticesSizeInBytes() const {
 		return sizeof(Vertex) * vertices.size();
 	}
 
 	// return the size in bytes of triangles indices
-	const size_t trianglesSizeInBytes() const {
+	const VkDeviceSize indicesSizeInBytes() const {
 		return sizeof(Triangle) * triangles.size();
 	}
 
@@ -175,11 +178,9 @@ private:
 
 	vector<VkFramebuffer> swapchainFramebuffers;
 
-	VkBuffer vertexBuffer;
-	VkDeviceMemory vertexBufferMemory;
+	VmaAllocator vertexBufferMemoryAllocator;
 
-	VkBuffer indexBuffer;
-	VkDeviceMemory indexBufferMemory;
+	VmaAllocator indexBufferMemoryAllocator;
 
 	VkCommandPool graphicsCommandPool;
 
@@ -198,12 +199,14 @@ private:
 	// This struct is used to know handle the memory of mesh
 	struct MeshHandle{
 		const Mesh *mesh;
+
 		size_t verticesSize;
-		size_t indicesSize;
-		uint32_t vertexOffset;
-		uint32_t indexOffset;
 		VkBuffer vertexBuffer;
+		VmaAllocation vertexAllocation;
+
+		size_t indicesSize;
 		VkBuffer indexBuffer;
+		VmaAllocation indexAllocation;
 	};
 
 	vector<MeshHandle> meshes;
@@ -273,8 +276,8 @@ private:
 
 	// TODO the vertex buffer is not handled correctly, it's necessary to change it
 	// Each "mesh" should have its vertex buffer
-	bool createVertexBuffer();
-	void destroyVertexBuffer();
+	bool createVertexBufferMemoryAllocator();
+	void destroyVertexBufferMemoryAllocator();
 
 	// TODO the index buffer is not handled correctly, it's necessary to change it
 	// Each "mesh" should have its index buffer
@@ -303,6 +306,8 @@ private:
 	bool createSyncObjects();
 	void destroySyncObjects();
 
+	void removeAllMeshes();
+
 	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
 
@@ -313,8 +318,8 @@ private:
 	void recreateSwapchain();
 
 	// return the size of allocated memory, or 0 if error.
-	size_t createBuffer(VkDeviceSize p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VkMemoryPropertyFlags p_memoryTypeFlags, VkBuffer &r_buffer, VkDeviceMemory &r_memory);
-	void destroyBuffer(VkBuffer &r_buffer, VkDeviceMemory &r_memory);
+	bool createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation);
+	void destroyBuffer(VmaAllocator p_allocator, VkBuffer &r_buffer, VmaAllocation &r_allocation);
 };
 
 class VisualServer

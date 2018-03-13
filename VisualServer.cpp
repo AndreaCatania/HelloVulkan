@@ -3,6 +3,10 @@
 #include <iostream>
 #include <fstream>
 
+// Implementation of VMA
+#define VMA_IMPLEMENTATION
+#include "libs/vma/vk_mem_alloc.h"
+
 #define INITIAL_WINDOW_WIDTH 800
 #define INITIAL_WINDOW_HEIGHT 600
 
@@ -61,10 +65,8 @@ VulkanServer::VulkanServer() :
 	renderPass(VK_NULL_HANDLE),
 	pipelineLayout(VK_NULL_HANDLE),
 	graphicsPipeline(VK_NULL_HANDLE),
-	vertexBuffer(VK_NULL_HANDLE),
-	vertexBufferMemory(VK_NULL_HANDLE),
-	indexBuffer(VK_NULL_HANDLE),
-	indexBufferMemory(VK_NULL_HANDLE),
+	vertexBufferMemoryAllocator(VK_NULL_HANDLE),
+	indexBufferMemoryAllocator(VK_NULL_HANDLE),
 	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
 	renderFinishedSemaphore(VK_NULL_HANDLE),
@@ -106,7 +108,7 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !createSwapchain() )
 		return false;
 
-	if( !createVertexBuffer() )
+	if( !createVertexBufferMemoryAllocator() )
 		return false;
 
 	if( !createIndexBuffer() )
@@ -128,10 +130,11 @@ void VulkanServer::destroy(){
 
 	waitIdle();
 
+	removeAllMeshes();
 	destroySyncObjects();
 	destroyCommandPool();
 	destroyIndexBuffer();
-	destroyVertexBuffer();
+	destroyVertexBufferMemoryAllocator();
 	destroySwapchain();
 	destroyLogicalDevice();
 	destroyDebugCallback();
@@ -212,10 +215,37 @@ void VulkanServer::draw(){
 
 void VulkanServer::add_mesh(const Mesh *p_mesh){
 
-	VkDeviceSize vertexOffset = 0;
-	VkDeviceSize indexOffset = 0;
+	VkBuffer vertexBuffer;
+	VmaAllocation vertexAllocation;
 
-	MeshHandle meshHandle({p_mesh, p_mesh->verticesSizeInBytes(), p_mesh->trianglesSizeInBytes(), vertexOffset, indexOffset, vertexBuffer, indexBuffer});
+	if( !createBuffer(vertexBufferMemoryAllocator,
+					  p_mesh->verticesSizeInBytes(),
+					  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+					  VK_SHARING_MODE_EXCLUSIVE,
+					  VMA_MEMORY_USAGE_GPU_ONLY,
+					  vertexBuffer,
+					  vertexAllocation) ){
+
+		print("[ERROR] Vertex buffer creation error, mesh not added");
+		return;
+	}
+
+	VkBuffer indexBuffer;
+	VmaAllocation indexAllocation;
+
+	if( !createBuffer(indexBufferMemoryAllocator,
+					  p_mesh->indicesSizeInBytes(),
+					  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+					  VK_SHARING_MODE_EXCLUSIVE,
+					  VMA_MEMORY_USAGE_GPU_ONLY,
+					  indexBuffer,
+					  indexAllocation) ){
+
+		print("[ERROR] Index buffer creation error, mesh not added");
+		return;
+	}
+
+	MeshHandle meshHandle({p_mesh, p_mesh->verticesSizeInBytes(), vertexBuffer, vertexAllocation, p_mesh->indicesSizeInBytes(), indexBuffer, indexAllocation});
 	meshesCopyPending.push_back(meshHandle);
 }
 
@@ -249,8 +279,8 @@ void VulkanServer::processCopy(){
 		vkBeginCommandBuffer(copyCommandBuffer, &copyBeginInfo);
 		for(int m = meshesCopyPending.size() -1; 0<=m; --m){
 
-			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].vertexBuffer, meshesCopyPending[m].vertexOffset, meshesCopyPending[m].verticesSize, meshesCopyPending[m].mesh->vertices.data());
-			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].indexBuffer, meshesCopyPending[m].indexOffset, meshesCopyPending[m].indicesSize, meshesCopyPending[m].mesh->triangles.data());
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].vertexBuffer, 0, meshesCopyPending[m].verticesSize, meshesCopyPending[m].mesh->vertices.data());
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].indexBuffer, 0, meshesCopyPending[m].indicesSize, meshesCopyPending[m].mesh->triangles.data());
 		}
 
 		if(VK_SUCCESS != vkEndCommandBuffer(copyCommandBuffer) ){
@@ -1094,36 +1124,52 @@ void VulkanServer::destroyFramebuffers(){
 
 }
 
-bool VulkanServer::createVertexBuffer(){
+bool VulkanServer::createVertexBufferMemoryAllocator(){
 
-	// Can store up to 1000 vertices
-	size_t allocatedMemory = createBuffer(sizeof(Vertex) * 1000,
-				 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-				 VK_SHARING_MODE_EXCLUSIVE,
-				 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-				 vertexBuffer,
-				 vertexBufferMemory );
+	VmaAllocatorCreateInfo allocatorCreateInfo = {};
+	allocatorCreateInfo.physicalDevice = physicalDevice;
+	allocatorCreateInfo.device = device;
+	allocatorCreateInfo.preferredLargeHeapBlockSize = 1ull * 1024 * 1024 * 1024; // 1 GB
 
-	return 0<allocatedMemory;
+	if( VK_SUCCESS!=vmaCreateAllocator(&allocatorCreateInfo, &vertexBufferMemoryAllocator)){
+		print("[ERROR] Vertex buffer creation of VMA allocator failed");
+		return false;
+	}
+
+	return true;
 }
 
-void VulkanServer::destroyVertexBuffer(){
-	destroyBuffer(vertexBuffer, vertexBufferMemory);
+void VulkanServer::destroyVertexBufferMemoryAllocator(){
+	vmaDestroyAllocator(vertexBufferMemoryAllocator);
+	vertexBufferMemoryAllocator = VK_NULL_HANDLE;
 }
 
 bool VulkanServer::createIndexBuffer(){
+
+	VmaAllocatorCreateInfo allocatorCreateInfo = {};
+	allocatorCreateInfo.physicalDevice = physicalDevice;
+	allocatorCreateInfo.device = device;
+
+	if( VK_SUCCESS!=vmaCreateAllocator(&allocatorCreateInfo, &indexBufferMemoryAllocator)){
+		print("[ERROR] Vertex buffer creation of VMA allocator failed");
+		return false;
+	}
+
+	return true;
+	// TODO remove this pease
 	// 1000 Triangles
-	size_t allocatedMemory = createBuffer(sizeof(Triangle) * 1000,
-										  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-										  VK_SHARING_MODE_EXCLUSIVE,
-										  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-										  indexBuffer,
-										  indexBufferMemory);
-	return 0<allocatedMemory;
+	//size_t allocatedMemory = createBuffer(sizeof(Triangle) * 1000,
+	//									  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+	//									  VK_SHARING_MODE_EXCLUSIVE,
+	//									  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+	//									  indexBuffer,
+	//									  indexBufferMemory);
+	//return 0<allocatedMemory;
 }
 
 void VulkanServer::destroyIndexBuffer(){
-	destroyBuffer(indexBuffer, indexBufferMemory);
+	vmaDestroyAllocator(indexBufferMemoryAllocator);
+	indexBufferMemoryAllocator = VK_NULL_HANDLE;
 }
 
 int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags){
@@ -1234,7 +1280,7 @@ void VulkanServer::beginCommandBuffers(){
 
 				// Add buffers to bind
 				vertexBuffers[m] = meshes[m].vertexBuffer;
-				offsets[m] = meshes[m].vertexOffset;
+				offsets[m] = 0;
 			}
 			vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
 			// Draw buffered data
@@ -1314,6 +1360,17 @@ void VulkanServer::destroySyncObjects(){
 	}
 
 	print("[INFO] Semaphores and Fences destroyed");
+}
+
+void VulkanServer::removeAllMeshes(){
+	meshesCopyPending.clear();
+
+	for(int m = meshes.size() -1; 0<=m; --m){
+		destroyBuffer(vertexBufferMemoryAllocator, meshes[m].vertexBuffer, meshes[m].vertexAllocation);
+		destroyBuffer(indexBufferMemoryAllocator, meshes[m].indexBuffer, meshes[m].indexAllocation);
+	}
+	meshes.clear();
+	print("[INFO] All meshes removed from scene");
 }
 
 bool checkExtensionsSupport(const vector<const char*> &p_requiredExtensions, vector<VkExtensionProperties> availableExtensions, bool verbose = true){
@@ -1422,58 +1479,31 @@ void VulkanServer::recreateSwapchain(){
 	reloadDrawCommandBuffer = true;
 }
 
-size_t VulkanServer::createBuffer(size_t p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VkMemoryPropertyFlags p_memoryTypeFlags, VkBuffer &r_buffer, VkDeviceMemory &r_memory){
+bool VulkanServer::createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation){
 
-	// Create buffer
 	VkBufferCreateInfo bufferCreateInfo = {};
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.size = p_size;
 	bufferCreateInfo.usage = p_usage;
 	bufferCreateInfo.sharingMode = p_sharingMode;
 
-	VkResult res = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &r_buffer);
-	if(VK_SUCCESS!=res){
-		print("[ERROR] Buffer creation error");
-		return 0;
+	VmaAllocationCreateInfo allocationCreateInfo = {};
+	allocationCreateInfo.usage = p_memoryUsage;
+
+	VmaAllocationInfo allocationInfo = {};
+
+	if(VK_SUCCESS!=vmaCreateBuffer(p_allocator, &bufferCreateInfo, &allocationCreateInfo, &r_buffer, &r_allocation, &allocationInfo)){
+		print("[ERROR] failed to allocate memory");
+		return false;
 	}
 
-	// Allocate memory
-	VkMemoryRequirements memoryRequirements;
-	vkGetBufferMemoryRequirements(device, r_buffer, &memoryRequirements);
-
-	int32_t memTypeId = chooseMemoryType( memoryRequirements.memoryTypeBits, p_memoryTypeFlags );
-	if(0>memTypeId){
-		print("[ERROR] No suitable memory found for vertex buffer");
-		return 0;
-	}
-
-	VkMemoryAllocateInfo memoryAllocationInfo = {};
-	memoryAllocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	memoryAllocationInfo.allocationSize = memoryRequirements.size;
-	memoryAllocationInfo.memoryTypeIndex = memTypeId;
-
-	res = vkAllocateMemory(device, &memoryAllocationInfo, nullptr, &r_memory);
-	if( res!=VK_SUCCESS ){
-		print("[ERROR] Buffer memory allocation failed");
-		return 0;
-	}
-
-	// Bind buffer to memory
-	vkBindBufferMemory(device, r_buffer, r_memory, /*offset*/0);
-
-	return memoryRequirements.size;
+	return allocationInfo.size>=p_size;
 }
 
-void VulkanServer::destroyBuffer(VkBuffer &r_buffer, VkDeviceMemory &r_memory){
-	if(r_buffer!=VK_NULL_HANDLE){
-		vkDestroyBuffer(device, r_buffer, nullptr);
-		r_buffer = VK_NULL_HANDLE;
-	}
-
-	if(r_memory!=VK_NULL_HANDLE){
-		vkFreeMemory(device, r_memory, nullptr);
-		r_memory = VK_NULL_HANDLE;
-	}
+void VulkanServer::destroyBuffer(VmaAllocator p_allocator, VkBuffer &r_buffer, VmaAllocation &r_allocation){
+	vmaDestroyBuffer(p_allocator, r_buffer, r_allocation);
+	r_buffer = VK_NULL_HANDLE;
+	r_allocation = VK_NULL_HANDLE;
 }
 
 VisualServer::VisualServer()

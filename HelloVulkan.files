@@ -1,3 +1,4 @@
+libs/vma/vk_mem_alloc.h
 shaders/shader.vert
 shaders/shader.frag
 VisualServer.cpp
