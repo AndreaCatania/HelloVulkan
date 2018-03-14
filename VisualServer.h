@@ -201,10 +201,12 @@ private:
 		const Mesh *mesh;
 
 		size_t verticesSize;
+		VkDeviceSize verticesBufferOffset;
 		VkBuffer vertexBuffer;
 		VmaAllocation vertexAllocation;
 
 		size_t indicesSize;
+		VkDeviceSize indicesBufferOffset;
 		VkBuffer indexBuffer;
 		VmaAllocation indexAllocation;
 	};

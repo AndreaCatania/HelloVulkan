@@ -235,7 +235,7 @@ void VulkanServer::add_mesh(const Mesh *p_mesh){
 
 	if( !createBuffer(indexBufferMemoryAllocator,
 					  p_mesh->indicesSizeInBytes(),
-					  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+					  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
 					  VMA_MEMORY_USAGE_GPU_ONLY,
 					  indexBuffer,
@@ -245,7 +245,7 @@ void VulkanServer::add_mesh(const Mesh *p_mesh){
 		return;
 	}
 
-	MeshHandle meshHandle({p_mesh, p_mesh->verticesSizeInBytes(), vertexBuffer, vertexAllocation, p_mesh->indicesSizeInBytes(), indexBuffer, indexAllocation});
+	MeshHandle meshHandle({p_mesh, p_mesh->verticesSizeInBytes(), 0, vertexBuffer, vertexAllocation, p_mesh->indicesSizeInBytes(), 0, indexBuffer, indexAllocation});
 	meshesCopyPending.push_back(meshHandle);
 }
 
@@ -306,7 +306,6 @@ void VulkanServer::processCopy(){
 		meshesCopyInProgress.insert(meshesCopyInProgress.end(), meshesCopyPending.begin(), meshesCopyPending.end());
 		meshesCopyPending.clear();
 	}
-
 }
 
 bool VulkanServer::createInstance(){
@@ -1156,15 +1155,6 @@ bool VulkanServer::createIndexBuffer(){
 	}
 
 	return true;
-	// TODO remove this pease
-	// 1000 Triangles
-	//size_t allocatedMemory = createBuffer(sizeof(Triangle) * 1000,
-	//									  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-	//									  VK_SHARING_MODE_EXCLUSIVE,
-	//									  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-	//									  indexBuffer,
-	//									  indexBufferMemory);
-	//return 0<allocatedMemory;
 }
 
 void VulkanServer::destroyIndexBuffer(){
@@ -1274,18 +1264,10 @@ void VulkanServer::beginCommandBuffers(){
 
 		if(meshes.size()>0){
 			// Bind buffers
-			vector<VkBuffer> vertexBuffers(meshes.size());
-			vector<VkDeviceSize> offsets(meshes.size());
 			for(int m = 0, s = meshes.size(); m<s; ++m){
 
-				// Add buffers to bind
-				vertexBuffers[m] = meshes[m].vertexBuffer;
-				offsets[m] = 0;
-			}
-			vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, vertexBuffers.size(), vertexBuffers.data(), offsets.data());
-			// Draw buffered data
-			for(int m = 0, s = meshes.size(); m<s; ++m){
-				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m].indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &meshes[m].vertexBuffer, &meshes[m].verticesBufferOffset);
+				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m].indexBuffer, meshes[m].indicesBufferOffset, VK_INDEX_TYPE_UINT32);
 				vkCmdDrawIndexed(drawCommandBuffers[i], meshes[m].mesh->getCountIndices(), 1, 0, 0, 0);
 			}
 		}
