@@ -63,10 +63,16 @@ VulkanServer::VulkanServer() :
 	vertShaderModule(VK_NULL_HANDLE),
 	fragShaderModule(VK_NULL_HANDLE),
 	renderPass(VK_NULL_HANDLE),
+	descriptorSetLayout(VK_NULL_HANDLE),
+	descriptorPool(VK_NULL_HANDLE),
 	pipelineLayout(VK_NULL_HANDLE),
 	graphicsPipeline(VK_NULL_HANDLE),
-	vertexBufferMemoryAllocator(VK_NULL_HANDLE),
-	indexBufferMemoryAllocator(VK_NULL_HANDLE),
+	bufferMemoryDeviceAllocator(VK_NULL_HANDLE),
+	bufferMemoryHostAllocator(VK_NULL_HANDLE),
+	sceneUniformBuffer(VK_NULL_HANDLE),
+	sceneUniformBufferAllocation(VK_NULL_HANDLE),
+	meshUniformBuffer(VK_NULL_HANDLE),
+	meshUniformBufferAllocation(VK_NULL_HANDLE),
 	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
 	renderFinishedSemaphore(VK_NULL_HANDLE),
@@ -105,13 +111,25 @@ bool VulkanServer::create(GLFWwindow* p_window){
 
 	lockupDeviceQueue();
 
+	if( !createDescriptorSetLayout() )
+		return false;
+
 	if( !createSwapchain() )
 		return false;
 
-	if( !createVertexBufferMemoryAllocator() )
+	if( !createBufferMemoryDeviceAllocator() )
 		return false;
 
-	if( !createIndexBuffer() )
+	if( !createBufferMemoryHostAllocator() )
+		return false;
+
+	if( !createUniformBuffers() )
+		return false;
+
+	if( !createUniformPool() )
+		return false;
+
+	if( !allocateAndConfigureDescriptorSet() )
 		return false;
 
 	if( !createCommandPool() )
@@ -133,9 +151,12 @@ void VulkanServer::destroy(){
 	removeAllMeshes();
 	destroySyncObjects();
 	destroyCommandPool();
-	destroyIndexBuffer();
-	destroyVertexBufferMemoryAllocator();
+	destroyUniformPool();
+	destroyUniformBuffers();
+	destroyBufferMemoryHostAllocator();
+	destroyBufferMemoryDeviceAllocator();
 	destroySwapchain();
+	destroyDescriptorSetLayout();
 	destroyLogicalDevice();
 	destroyDebugCallback();
 	destroySurface();
@@ -160,6 +181,9 @@ void VulkanServer::draw(){
 
 	processCopy();
 
+	updateUniformBuffer();
+
+	// TODO please improve this shit
 	// wait the presentQueue is idle to avoid validation layer to memory leak when it's not syn with GPU
 	// This is very bad approach and should be used semaphores
 	vkQueueWaitIdle(presentationQueue);
@@ -218,7 +242,7 @@ void VulkanServer::add_mesh(const Mesh *p_mesh){
 	VkBuffer vertexBuffer;
 	VmaAllocation vertexAllocation;
 
-	if( !createBuffer(vertexBufferMemoryAllocator,
+	if( !createBuffer(bufferMemoryDeviceAllocator,
 					  p_mesh->verticesSizeInBytes(),
 					  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
@@ -233,7 +257,7 @@ void VulkanServer::add_mesh(const Mesh *p_mesh){
 	VkBuffer indexBuffer;
 	VmaAllocation indexAllocation;
 
-	if( !createBuffer(indexBufferMemoryAllocator,
+	if( !createBuffer(bufferMemoryDeviceAllocator,
 					  p_mesh->indicesSizeInBytes(),
 					  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
@@ -306,6 +330,32 @@ void VulkanServer::processCopy(){
 		meshesCopyInProgress.insert(meshesCopyInProgress.end(), meshesCopyPending.begin(), meshesCopyPending.end());
 		meshesCopyPending.clear();
 	}
+}
+
+void VulkanServer::updateUniformBuffer(){
+
+	// TODO Please use "push constants" to push data instead of this approach
+	// TODO Please implement it correctly with correctly handling of delta time with model data per mesh
+	static auto startTime = std::chrono::high_resolution_clock::now();
+
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+	SceneUniformBufferObject sceneUBO = {};
+	sceneUBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+	sceneUBO.projection = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float) swapchainExtent.height, 0.1f, 10.0f);
+
+	MeshUniformBufferObject meshUBO = {};
+	meshUBO.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+	void* data;
+	vmaMapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation, &data);
+	memcpy(data, &sceneUBO, sizeof(SceneUniformBufferObject));
+	vmaUnmapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation);
+
+	vmaMapMemory(bufferMemoryHostAllocator, meshUniformBufferAllocation, &data);
+	memcpy(data, &meshUBO, sizeof(MeshUniformBufferObject));
+	vmaUnmapMemory(bufferMemoryHostAllocator, meshUniformBufferAllocation);
 }
 
 bool VulkanServer::createInstance(){
@@ -861,6 +911,47 @@ void VulkanServer::destroyRenderPass(){
 	renderPass = VK_NULL_HANDLE;
 }
 
+bool VulkanServer::createDescriptorSetLayout(){
+
+	VkDescriptorSetLayoutBinding spatialDescriptorBinding = {};
+	spatialDescriptorBinding.binding = 0;
+	spatialDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	// Since I can define an array of uniform with descriptorCount I can define the size of this array
+	spatialDescriptorBinding.descriptorCount = 1;
+	spatialDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutBinding meshDescriptorBinding = {};
+	meshDescriptorBinding.binding = 1;
+	meshDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	meshDescriptorBinding.descriptorCount = 1;
+	meshDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutBinding descriptors[] = {spatialDescriptorBinding, meshDescriptorBinding};
+	//VkDescriptorSetLayoutBinding descriptors[] = {spatialDescriptorBinding};
+
+	VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
+	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutCreateInfo.bindingCount = 2;
+	layoutCreateInfo.pBindings = descriptors;
+
+	VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &descriptorSetLayout );
+	if(VK_SUCCESS != res){
+		print("[ERROR] Error during creation of descriptor layout");
+		return false;
+	}
+
+	print("[INFO] Uniform descriptor created");
+	return true;
+}
+
+void VulkanServer::destroyDescriptorSetLayout(){
+	if(VK_NULL_HANDLE == descriptorSetLayout)
+		return;
+
+	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+	print("[INFO] Uniform descriptor destroyed");
+}
+
 #define SHADER_VERTEX_PATH "./shaders/bin/vert.spv"
 #define SHADER_FRAGMENT_PATH "shaders/bin/frag.spv"
 
@@ -994,7 +1085,8 @@ bool VulkanServer::createGraphicsPipelines(){
 	{
 		VkPipelineLayoutCreateInfo layoutCreateInfo = {};
 		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		layoutCreateInfo.setLayoutCount = 0;
+		layoutCreateInfo.setLayoutCount = 1;
+		layoutCreateInfo.pSetLayouts = &descriptorSetLayout;
 
 		if(VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout)){
 			print("[ERROR] Failed to create pipeline layout");
@@ -1123,14 +1215,14 @@ void VulkanServer::destroyFramebuffers(){
 
 }
 
-bool VulkanServer::createVertexBufferMemoryAllocator(){
+bool VulkanServer::createBufferMemoryDeviceAllocator(){
 
 	VmaAllocatorCreateInfo allocatorCreateInfo = {};
 	allocatorCreateInfo.physicalDevice = physicalDevice;
 	allocatorCreateInfo.device = device;
 	allocatorCreateInfo.preferredLargeHeapBlockSize = 1ull * 1024 * 1024 * 1024; // 1 GB
 
-	if( VK_SUCCESS!=vmaCreateAllocator(&allocatorCreateInfo, &vertexBufferMemoryAllocator)){
+	if( VK_SUCCESS!=vmaCreateAllocator(&allocatorCreateInfo, &bufferMemoryDeviceAllocator)){
 		print("[ERROR] Vertex buffer creation of VMA allocator failed");
 		return false;
 	}
@@ -1138,18 +1230,18 @@ bool VulkanServer::createVertexBufferMemoryAllocator(){
 	return true;
 }
 
-void VulkanServer::destroyVertexBufferMemoryAllocator(){
-	vmaDestroyAllocator(vertexBufferMemoryAllocator);
-	vertexBufferMemoryAllocator = VK_NULL_HANDLE;
+void VulkanServer::destroyBufferMemoryDeviceAllocator(){
+	vmaDestroyAllocator(bufferMemoryDeviceAllocator);
+	bufferMemoryDeviceAllocator = VK_NULL_HANDLE;
 }
 
-bool VulkanServer::createIndexBuffer(){
+bool VulkanServer::createBufferMemoryHostAllocator(){
 
 	VmaAllocatorCreateInfo allocatorCreateInfo = {};
 	allocatorCreateInfo.physicalDevice = physicalDevice;
 	allocatorCreateInfo.device = device;
 
-	if( VK_SUCCESS!=vmaCreateAllocator(&allocatorCreateInfo, &indexBufferMemoryAllocator)){
+	if( VK_SUCCESS!=vmaCreateAllocator(&allocatorCreateInfo, &bufferMemoryHostAllocator)){
 		print("[ERROR] Vertex buffer creation of VMA allocator failed");
 		return false;
 	}
@@ -1157,9 +1249,9 @@ bool VulkanServer::createIndexBuffer(){
 	return true;
 }
 
-void VulkanServer::destroyIndexBuffer(){
-	vmaDestroyAllocator(indexBufferMemoryAllocator);
-	indexBufferMemoryAllocator = VK_NULL_HANDLE;
+void VulkanServer::destroyBufferMemoryHostAllocator(){
+	vmaDestroyAllocator(bufferMemoryHostAllocator);
+	bufferMemoryHostAllocator = VK_NULL_HANDLE;
 }
 
 int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags){
@@ -1177,6 +1269,119 @@ int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlag
 	}
 
 	return -1;
+}
+
+bool VulkanServer::createUniformBuffers(){
+
+	if( !createBuffer(bufferMemoryHostAllocator,
+					  sizeof(SceneUniformBufferObject),
+					  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					  VK_SHARING_MODE_EXCLUSIVE,
+					  VMA_MEMORY_USAGE_CPU_TO_GPU,
+					  sceneUniformBuffer,
+					  sceneUniformBufferAllocation) ){
+
+		print("[ERROR] Scene uniform buffer allocation failed");
+		return false;
+	}
+
+	if( !createBuffer(bufferMemoryHostAllocator,
+					  sizeof(MeshUniformBufferObject),
+					  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					  VK_SHARING_MODE_EXCLUSIVE,
+					  VMA_MEMORY_USAGE_CPU_TO_GPU,
+					  meshUniformBuffer,
+					  meshUniformBufferAllocation) ){
+
+		print("[ERROR] Mesh uniform buffer allocation failed");
+		return false;
+	}
+
+	print("[INFO] uniform buffers allocation success");
+	return true;
+}
+
+void VulkanServer::destroyUniformBuffers(){
+	destroyBuffer(bufferMemoryHostAllocator, sceneUniformBuffer, sceneUniformBufferAllocation);
+	destroyBuffer(bufferMemoryHostAllocator, meshUniformBuffer, meshUniformBufferAllocation);
+	print("[INFO] All buffers was freed");
+}
+
+bool VulkanServer::createUniformPool(){
+
+	VkDescriptorPoolSize poolSize = {};
+	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	poolSize.descriptorCount = 2;
+
+	VkDescriptorPoolCreateInfo poolCreateInfo = {};
+	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolCreateInfo.poolSizeCount = 1;
+	poolCreateInfo.pPoolSizes = &poolSize;
+	poolCreateInfo.maxSets = 1;
+
+	VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &descriptorPool);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Error during creation of descriptor pool");
+	}
+
+	print("[INFO] Uniform pool created");
+	return true;
+}
+
+void VulkanServer::destroyUniformPool(){
+	if(descriptorPool==VK_NULL_HANDLE)
+		return;
+	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+	descriptorPool = VK_NULL_HANDLE;
+	print("[INFO] Uniform pool destroyed");
+}
+
+bool VulkanServer::allocateAndConfigureDescriptorSet(){
+
+	// Define the structure of uniform buffer
+	VkDescriptorSetAllocateInfo allocationInfo = {};
+	allocationInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocationInfo.descriptorPool = descriptorPool;
+	allocationInfo.descriptorSetCount = 1;
+	allocationInfo.pSetLayouts = &descriptorSetLayout;
+
+	VkResult res = vkAllocateDescriptorSets(device, &allocationInfo, &descriptorSet);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Allocation of descriptor set failed");
+		return false;
+	}
+
+	VkDescriptorBufferInfo sceneBufferInfo = {};
+	sceneBufferInfo.buffer = sceneUniformBuffer;
+	sceneBufferInfo.offset = 0;
+	sceneBufferInfo.range = sizeof(SceneUniformBufferObject);
+
+	VkDescriptorBufferInfo meshBufferInfo = {};
+	meshBufferInfo.buffer = meshUniformBuffer;
+	meshBufferInfo.offset = 0;
+	meshBufferInfo.range = sizeof(MeshUniformBufferObject);
+
+	VkWriteDescriptorSet writeDescriptors[] = {{}, {}};
+	writeDescriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptors[0].dstSet = descriptorSet;
+	writeDescriptors[0].dstBinding = 0;
+	writeDescriptors[0].dstArrayElement = 0;
+	writeDescriptors[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writeDescriptors[0].descriptorCount = 1;
+	writeDescriptors[0].pBufferInfo = &sceneBufferInfo;
+
+	writeDescriptors[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptors[1].dstSet = descriptorSet;
+	writeDescriptors[1].dstBinding = 1;
+	writeDescriptors[1].dstArrayElement = 0;
+	writeDescriptors[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writeDescriptors[1].descriptorCount = 1;
+	writeDescriptors[1].pBufferInfo = &meshBufferInfo;
+
+	vkUpdateDescriptorSets(device, 2, writeDescriptors, 0, nullptr);
+
+	print("[INFO] Descriptor set created");
+	return true;
 }
 
 bool VulkanServer::createCommandPool(){
@@ -1266,6 +1471,7 @@ void VulkanServer::beginCommandBuffers(){
 			// Bind buffers
 			for(int m = 0, s = meshes.size(); m<s; ++m){
 
+				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &meshes[m].vertexBuffer, &meshes[m].verticesBufferOffset);
 				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m].indexBuffer, meshes[m].indicesBufferOffset, VK_INDEX_TYPE_UINT32);
 				vkCmdDrawIndexed(drawCommandBuffers[i], meshes[m].mesh->getCountIndices(), 1, 0, 0, 0);
@@ -1348,8 +1554,8 @@ void VulkanServer::removeAllMeshes(){
 	meshesCopyPending.clear();
 
 	for(int m = meshes.size() -1; 0<=m; --m){
-		destroyBuffer(vertexBufferMemoryAllocator, meshes[m].vertexBuffer, meshes[m].vertexAllocation);
-		destroyBuffer(indexBufferMemoryAllocator, meshes[m].indexBuffer, meshes[m].indexAllocation);
+		destroyBuffer(bufferMemoryDeviceAllocator, meshes[m].vertexBuffer, meshes[m].vertexAllocation);
+		destroyBuffer(bufferMemoryDeviceAllocator, meshes[m].indexBuffer, meshes[m].indexAllocation);
 	}
 	meshes.clear();
 	print("[INFO] All meshes removed from scene");

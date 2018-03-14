@@ -2,7 +2,10 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#define GLM_FORCE_RADIANS
 #include "libs/glm/glm.hpp"
+#include "libs/glm/gtc/matrix_transform.hpp"
 #include <string>
 #include <vector>
 #include <array>
@@ -133,6 +136,15 @@ public:
 		vector<VkPresentModeKHR> presentModes;
 	};
 
+	struct SceneUniformBufferObject{
+		glm::mat4 view;
+		glm::mat4 projection;
+	};
+
+	struct MeshUniformBufferObject{
+		glm::mat4 model;
+	};
+
 	VulkanServer();
 
 	bool enableValidationLayer();
@@ -146,6 +158,7 @@ public:
 
 	void add_mesh(const Mesh *p_mesh);
 	void processCopy();
+	void updateUniformBuffer();
 
 private:
 	GLFWwindow* window;
@@ -173,14 +186,22 @@ private:
 	VkShaderModule fragShaderModule;
 
 	VkRenderPass renderPass;
+	VkDescriptorSetLayout descriptorSetLayout; // Opaque object that has some information about uniform data
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSet descriptorSet;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
 	vector<VkFramebuffer> swapchainFramebuffers;
 
-	VmaAllocator vertexBufferMemoryAllocator;
+	VmaAllocator bufferMemoryDeviceAllocator;
 
-	VmaAllocator indexBufferMemoryAllocator;
+	VmaAllocator bufferMemoryHostAllocator;
+
+	VkBuffer sceneUniformBuffer; // Used for scene
+	VmaAllocation sceneUniformBufferAllocation;
+	VkBuffer meshUniformBuffer; // Used for mesh
+	VmaAllocation meshUniformBufferAllocation;
 
 	VkCommandPool graphicsCommandPool;
 
@@ -260,6 +281,10 @@ private:
 	bool createRenderPass();
 	void destroyRenderPass();
 
+	// Is the object that describe the uniform buffer
+	bool createDescriptorSetLayout();
+	void destroyDescriptorSetLayout();
+
 	// The pipeline is the object that contains all commands of a particular rendering process
 	// Shader, Vertex inputs, viewports, etc..
 	// Each pipiline has a reference to a particular subpass of renderpass
@@ -276,18 +301,24 @@ private:
 	bool createFramebuffers();
 	void destroyFramebuffers();
 
-	// TODO the vertex buffer is not handled correctly, it's necessary to change it
-	// Each "mesh" should have its vertex buffer
-	bool createVertexBufferMemoryAllocator();
-	void destroyVertexBufferMemoryAllocator();
+	// Create the allocator that handle the buffer memory VRAM
+	bool createBufferMemoryDeviceAllocator();
+	void destroyBufferMemoryDeviceAllocator();
 
-	// TODO the index buffer is not handled correctly, it's necessary to change it
-	// Each "mesh" should have its index buffer
-	bool createIndexBuffer();
-	void destroyIndexBuffer();
+	// Create the allocator that handle the buffer memory RAM
+	bool createBufferMemoryHostAllocator();
+	void destroyBufferMemoryHostAllocator();
 
 	// typeBits indicate the suitable types of memory for the buffer
 	int32_t chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags);
+
+	bool createUniformBuffers();
+	void destroyUniformBuffers();
+
+	bool createUniformPool();
+	void destroyUniformPool();
+
+	bool allocateAndConfigureDescriptorSet();
 
 	// The command pool is an opaque object that is used to allocate command buffers easily
 	bool createCommandPool();
