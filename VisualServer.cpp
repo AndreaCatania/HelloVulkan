@@ -76,6 +76,9 @@ VulkanServer::VulkanServer() :
 	device(VK_NULL_HANDLE),
 	graphicsQueue(VK_NULL_HANDLE),
 	presentationQueue(VK_NULL_HANDLE),
+	depthImage(VK_NULL_HANDLE),
+	depthImageMemory(VK_NULL_HANDLE),
+	depthImageView(VK_NULL_HANDLE),
 	swapchain(VK_NULL_HANDLE),
 	vertShaderModule(VK_NULL_HANDLE),
 	fragShaderModule(VK_NULL_HANDLE),
@@ -728,6 +731,9 @@ bool VulkanServer::createSwapchain(){
 	if( !createSwapchainImageViews() )
 		return false;
 
+	if( !createDepthTestResources() )
+		return false;
+
 	if( !createRenderPass() )
 		return false;
 
@@ -745,6 +751,7 @@ void VulkanServer::destroySwapchain(){
 	destroyFramebuffers();
 	destroyGraphicsPipelines();
 	destroyRenderPass();
+	destroyDepthTestResources();
 	destroySwapchainImageViews();
 	destroyRawSwapchain();
 }
@@ -834,23 +841,7 @@ bool VulkanServer::createSwapchainImageViews(){
 	bool error = false;
 
 	for(int i = swapchainImageViews.size() - 1; i>=0; --i){
-		VkImageViewCreateInfo createInfo = {};
-		createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		createInfo.image = swapchainImages[i];
-		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		createInfo.format = swapchainImageFormat;
-		createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-		createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		createInfo.subresourceRange.baseMipLevel = 0;
-		createInfo.subresourceRange.levelCount = 1;
-		createInfo.subresourceRange.baseArrayLayer = 0;
-		createInfo.subresourceRange.layerCount = 1;
-
-		VkResult res = vkCreateImageView(device, &createInfo, nullptr, &swapchainImageViews[i]);
-		if(res != VK_SUCCESS){
+		if(!createImageView(swapchainImages[i], swapchainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, swapchainImageViews[i])){
 			swapchainImageViews[i] = VK_NULL_HANDLE;
 			error = true;
 		}
@@ -871,10 +862,32 @@ void VulkanServer::destroySwapchainImageViews(){
 		if( swapchainImageViews[i] == VK_NULL_HANDLE )
 			continue;
 
-		vkDestroyImageView(device, swapchainImageViews[i], nullptr );
+		destroyImageView(swapchainImageViews[i]);
 	}
 	swapchainImageViews.clear();
 	print("[INFO] Destroyed image views");
+}
+
+bool VulkanServer::createDepthTestResources(){
+
+	VkFormat depthFormat = findBestDepthFormat();
+
+	if( !createImage(swapchainExtent.width, swapchainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory) ){
+		print("[ERROR] Image not create");
+		return false;
+	}
+
+	if( !createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, depthImageView)){
+		print("[ERROR] Failed to create depth image view");
+		return false;
+	}
+
+	print("[INFO] Depth test resources created");
+	return true;
+}
+
+void VulkanServer::destroyDepthTestResources(){
+	print("[INFO] Depth test resources destroyed");
 }
 
 bool VulkanServer::createRenderPass(){
@@ -1445,7 +1458,7 @@ bool VulkanServer::allocateAndConfigureDescriptorSet(){
 	VkDescriptorBufferInfo meshBufferInfo = {};
 	meshBufferInfo.buffer = meshUniformBufferData.meshUniformBuffer;
 	meshBufferInfo.offset = 0;
-	meshBufferInfo.range = meshUniformBufferData.size * meshDynamicUniformBufferOffset;
+	meshBufferInfo.range = meshDynamicUniformBufferOffset;
 
 	VkWriteDescriptorSet meshesWriteDescriptor = {};
 	meshesWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -1552,6 +1565,7 @@ void VulkanServer::beginCommandBuffers(){
 
 				descriptorsSets[1] = meshesDescriptorSet; // TODOD set here the right descriptor set
 				uint32_t dynamicOffset = meshes[m]->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
+
 				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptorsSets, 1, &dynamicOffset);
 				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &meshes[m]->vertexBuffer, &meshes[m]->verticesBufferOffset);
 				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m]->indexBuffer, meshes[m]->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
@@ -1771,6 +1785,114 @@ void VulkanServer::destroyBuffer(VmaAllocator p_allocator, VkBuffer &r_buffer, V
 	vmaDestroyBuffer(p_allocator, r_buffer, r_allocation);
 	r_buffer = VK_NULL_HANDLE;
 	r_allocation = VK_NULL_HANDLE;
+}
+
+
+bool VulkanServer::hasStencilComponent(VkFormat p_format) {
+	return p_format == VK_FORMAT_D32_SFLOAT_S8_UINT || p_format == VK_FORMAT_D24_UNORM_S8_UINT;
+}
+
+VkFormat VulkanServer::findBestDepthFormat(){
+	VkFormat out;
+	if(chooseBestSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, &out)){
+		return out;
+	}
+
+	// TODO Really bad error handling
+	return VK_FORMAT_D32_SFLOAT;
+}
+
+bool VulkanServer::chooseBestSupportedFormat(const vector<VkFormat> &p_formats, VkImageTiling p_tiling, VkFormatFeatureFlags p_features, VkFormat *r_format){
+	VkFormatProperties props;
+	for(int i = 0, s = p_formats.size(); i<s; ++i){
+		vkGetPhysicalDeviceFormatProperties(physicalDevice, p_formats[i], &props);
+
+		if(p_tiling == VK_IMAGE_TILING_LINEAR){
+			if((props.linearTilingFeatures & p_features) == p_features){
+				*r_format = p_formats[i];
+				return true;
+			}
+		}else if(p_tiling == VK_IMAGE_TILING_OPTIMAL){
+			if((props.optimalTilingFeatures & p_features) == p_features){
+				*r_format = p_formats[i];
+				return true;
+			}
+		}
+	}
+	print("[ERROR - not handled] Not able to find supported format");
+	return false;
+}
+
+bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height, VkFormat &p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &p_image, VkDeviceMemory &p_memory){
+	VkImageCreateInfo imageCreateInfo = {};
+	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageCreateInfo.format = p_format;
+	imageCreateInfo.extent.width = p_width;
+	imageCreateInfo.extent.height = p_height;
+	imageCreateInfo.mipLevels = 1;
+	imageCreateInfo.arrayLayers = 1;
+	imageCreateInfo.tiling = p_tiling;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageCreateInfo.usage = p_usage;
+	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if(VK_SUCCESS!=vkCreateImage(device, &imageCreateInfo, nullptr, &p_image)){
+		return false;
+	}
+
+	VkMemoryRequirements memoryRequirements;
+	vkGetImageMemoryRequirements(device, p_image, &memoryRequirements);
+
+	VkMemoryAllocateInfo memoryAllocInfo = {};
+	memoryAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	memoryAllocInfo.allocationSize = memoryRequirements.size;
+	memoryAllocInfo.memoryTypeIndex = chooseMemoryType(memoryRequirements.memoryTypeBits, p_memoryFlags);
+
+	if( VK_SUCCESS != vkAllocateMemory(device, &memoryAllocInfo, nullptr, &p_memory)){
+		return false;
+	}
+
+	vkBindImageMemory(device, p_image, p_memory, /*Offset*/0);
+
+	return true;
+}
+
+void VulkanServer::destroyImage(VkImage &p_image, VkDeviceMemory &p_memory){
+	vkDestroyImage(device, p_image, nullptr);
+	vkFreeMemory(device, p_memory, nullptr);
+	p_image = VK_NULL_HANDLE;
+	p_memory = VK_NULL_HANDLE;
+}
+
+bool VulkanServer::createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, VkImageView &r_imageView){
+
+	VkImageViewCreateInfo viewCreateInfo = {};
+	viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewCreateInfo.image = p_image;
+	viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewCreateInfo.format = p_format;
+	viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+	viewCreateInfo.subresourceRange.aspectMask = p_aspectFlags;
+	viewCreateInfo.subresourceRange.baseMipLevel = 0;
+	viewCreateInfo.subresourceRange.levelCount = 1;
+	viewCreateInfo.subresourceRange.baseArrayLayer = 0;
+	viewCreateInfo.subresourceRange.layerCount = 1;
+
+	if(VK_SUCCESS != vkCreateImageView(device, &viewCreateInfo, nullptr, &r_imageView)){
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanServer::destroyImageView(VkImageView &r_imageView){
+	vkDestroyImageView(device, r_imageView, nullptr );
+	r_imageView = VK_NULL_HANDLE;
 }
 
 VisualServer::VisualServer()
