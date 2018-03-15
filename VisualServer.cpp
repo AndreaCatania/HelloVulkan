@@ -10,6 +10,8 @@
 #define INITIAL_WINDOW_WIDTH 800
 #define INITIAL_WINDOW_HEIGHT 600
 
+#define MAX_MESH_COUNT 5
+
 void print(string c){
 	cout << c << endl;
 }
@@ -50,6 +52,21 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 	return VK_FALSE;
 }
 
+Mesh::Mesh(){
+	meshHandle = unique_ptr<MeshHandle>(new MeshHandle);
+	meshHandle->mesh = this;
+	transformation = glm::mat4(1.f);
+}
+
+Mesh::~Mesh(){
+
+}
+
+void Mesh::setTransform(const glm::mat4 &p_transformation){
+	transformation = p_transformation;
+	meshHandle->hasTransformationChange = true;
+}
+
 VulkanServer::VulkanServer() :
 	window(nullptr),
 	instance(VK_NULL_HANDLE),
@@ -63,16 +80,16 @@ VulkanServer::VulkanServer() :
 	vertShaderModule(VK_NULL_HANDLE),
 	fragShaderModule(VK_NULL_HANDLE),
 	renderPass(VK_NULL_HANDLE),
-	descriptorSetLayout(VK_NULL_HANDLE),
-	descriptorPool(VK_NULL_HANDLE),
+	cameraDescriptorSetLayout(VK_NULL_HANDLE),
+	cameraDescriptorPool(VK_NULL_HANDLE),
+	meshesDescriptorSetLayout(VK_NULL_HANDLE),
+	meshesDescriptorPool(VK_NULL_HANDLE),
 	pipelineLayout(VK_NULL_HANDLE),
 	graphicsPipeline(VK_NULL_HANDLE),
 	bufferMemoryDeviceAllocator(VK_NULL_HANDLE),
 	bufferMemoryHostAllocator(VK_NULL_HANDLE),
-	sceneUniformBuffer(VK_NULL_HANDLE),
-	sceneUniformBufferAllocation(VK_NULL_HANDLE),
-	meshUniformBuffer(VK_NULL_HANDLE),
-	meshUniformBufferAllocation(VK_NULL_HANDLE),
+	cameraUniformBuffer(VK_NULL_HANDLE),
+	cameraUniformBufferAllocation(VK_NULL_HANDLE),
 	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
 	renderFinishedSemaphore(VK_NULL_HANDLE),
@@ -111,7 +128,7 @@ bool VulkanServer::create(GLFWwindow* p_window){
 
 	lockupDeviceQueue();
 
-	if( !createDescriptorSetLayout() )
+	if( !createDescriptorSetLayouts() )
 		return false;
 
 	if( !createSwapchain() )
@@ -126,7 +143,7 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !createUniformBuffers() )
 		return false;
 
-	if( !createUniformPool() )
+	if( !createUniformPools() )
 		return false;
 
 	if( !allocateAndConfigureDescriptorSet() )
@@ -151,12 +168,12 @@ void VulkanServer::destroy(){
 	removeAllMeshes();
 	destroySyncObjects();
 	destroyCommandPool();
-	destroyUniformPool();
+	destroyUniformPools();
 	destroyUniformBuffers();
 	destroyBufferMemoryHostAllocator();
 	destroyBufferMemoryDeviceAllocator();
 	destroySwapchain();
-	destroyDescriptorSetLayout();
+	destroyDescriptorSetLayouts();
 	destroyLogicalDevice();
 	destroyDebugCallback();
 	destroySurface();
@@ -237,40 +254,50 @@ void VulkanServer::draw(){
 	}
 }
 
-void VulkanServer::add_mesh(const Mesh *p_mesh){
+void VulkanServer::addMesh(const Mesh *p_mesh){
 
-	VkBuffer vertexBuffer;
-	VmaAllocation vertexAllocation;
+	if( meshUniformBufferData.count >= meshUniformBufferData.size){
+		print("[ERROR] Max mesh limit reached, can't add more meshes");
+		return;
+	}
 
 	if( !createBuffer(bufferMemoryDeviceAllocator,
 					  p_mesh->verticesSizeInBytes(),
 					  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
 					  VMA_MEMORY_USAGE_GPU_ONLY,
-					  vertexBuffer,
-					  vertexAllocation) ){
+					  p_mesh->meshHandle->vertexBuffer,
+					  p_mesh->meshHandle->vertexAllocation) ){
 
 		print("[ERROR] Vertex buffer creation error, mesh not added");
 		return;
 	}
-
-	VkBuffer indexBuffer;
-	VmaAllocation indexAllocation;
 
 	if( !createBuffer(bufferMemoryDeviceAllocator,
 					  p_mesh->indicesSizeInBytes(),
 					  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
 					  VMA_MEMORY_USAGE_GPU_ONLY,
-					  indexBuffer,
-					  indexAllocation) ){
+					  p_mesh->meshHandle->indexBuffer,
+					  p_mesh->meshHandle->indexAllocation) ){
 
 		print("[ERROR] Index buffer creation error, mesh not added");
 		return;
 	}
 
-	MeshHandle meshHandle({p_mesh, p_mesh->verticesSizeInBytes(), 0, vertexBuffer, vertexAllocation, p_mesh->indicesSizeInBytes(), 0, indexBuffer, indexAllocation});
-	meshesCopyPending.push_back(meshHandle);
+	p_mesh->meshHandle->verticesSize = p_mesh->verticesSizeInBytes();
+	p_mesh->meshHandle->verticesBufferOffset = 0;
+	p_mesh->meshHandle->indicesSize = p_mesh->indicesSizeInBytes();
+	p_mesh->meshHandle->indicesBufferOffset = 0;
+	p_mesh->meshHandle->meshUniformBufferOffset = meshUniformBufferData.count++;
+	p_mesh->meshHandle->hasTransformationChange = true;
+
+	meshesCopyPending.push_back(p_mesh->meshHandle.get());
+}
+
+void VulkanServer::removeMesh_internal(MeshHandle *p_meshHandle){
+	destroyBuffer(bufferMemoryDeviceAllocator, p_meshHandle->indexBuffer, p_meshHandle->indexAllocation);
+	destroyBuffer(bufferMemoryDeviceAllocator, p_meshHandle->vertexBuffer, p_meshHandle->vertexAllocation);
 }
 
 void VulkanServer::processCopy(){
@@ -303,8 +330,8 @@ void VulkanServer::processCopy(){
 		vkBeginCommandBuffer(copyCommandBuffer, &copyBeginInfo);
 		for(int m = meshesCopyPending.size() -1; 0<=m; --m){
 
-			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].vertexBuffer, 0, meshesCopyPending[m].verticesSize, meshesCopyPending[m].mesh->vertices.data());
-			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m].indexBuffer, 0, meshesCopyPending[m].indicesSize, meshesCopyPending[m].mesh->triangles.data());
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m]->vertexBuffer, 0, meshesCopyPending[m]->verticesSize, meshesCopyPending[m]->mesh->vertices.data());
+			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m]->indexBuffer, 0, meshesCopyPending[m]->indicesSize, meshesCopyPending[m]->mesh->triangles.data());
 		}
 
 		if(VK_SUCCESS != vkEndCommandBuffer(copyCommandBuffer) ){
@@ -341,21 +368,26 @@ void VulkanServer::updateUniformBuffer(){
 	auto currentTime = std::chrono::high_resolution_clock::now();
 	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-	SceneUniformBufferObject sceneUBO = {};
+	CameraUniformBufferObject sceneUBO = {};
 	sceneUBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
 	sceneUBO.projection = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float) swapchainExtent.height, 0.1f, 10.0f);
 
-	MeshUniformBufferObject meshUBO = {};
-	meshUBO.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
 	void* data;
-	vmaMapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation, &data);
-	memcpy(data, &sceneUBO, sizeof(SceneUniformBufferObject));
-	vmaUnmapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation);
+	vmaMapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation, &data);
+	memcpy(data, &sceneUBO, sizeof(CameraUniformBufferObject));
+	vmaUnmapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation);
 
-	vmaMapMemory(bufferMemoryHostAllocator, meshUniformBufferAllocation, &data);
-	memcpy(data, &meshUBO, sizeof(MeshUniformBufferObject));
-	vmaUnmapMemory(bufferMemoryHostAllocator, meshUniformBufferAllocation);
+	// Update mesh dynamic uniform buffers
+	vmaMapMemory(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBufferAllocation, &data);
+	MeshUniformBufferObject supportMeshUBO;
+	for(int i = meshes.size() -1; 0<=i; --i){
+		if( !meshes[i]->hasTransformationChange )
+			continue;
+		supportMeshUBO.model = meshes[i]->mesh->transformation;
+		memcpy(data + meshes[i]->meshUniformBufferOffset * meshDynamicUniformBufferOffset, &supportMeshUBO, sizeof(MeshUniformBufferObject));
+		meshes[i]->hasTransformationChange = false;
+	}
+	vmaUnmapMemory(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBufferAllocation);
 }
 
 bool VulkanServer::createInstance(){
@@ -494,11 +526,13 @@ bool VulkanServer::pickPhysicalDevice(){
 	vector<VkPhysicalDevice> availableDevices(availableDevicesCount);
 	vkEnumeratePhysicalDevices(instance, &availableDevicesCount, availableDevices.data());
 
-	int id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
+	VkPhysicalDeviceProperties deviceProps;
+
+	int id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, &deviceProps);
 	if(id<0){
-		id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
+		id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, &deviceProps);
 		if(id<0){
-			id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_CPU);
+			id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_CPU, &deviceProps);
 			if(id<0){
 				print("[Error] No suitable device");
 				return false;
@@ -507,6 +541,9 @@ bool VulkanServer::pickPhysicalDevice(){
 	}
 
 	physicalDevice = availableDevices[id];
+
+	physicalDeviceMinUniformBufferOffsetAlignment = deviceProps.limits.minUniformBufferOffsetAlignment;
+
 	print("[INFO] Physical Device selected");
 	return true;
 }
@@ -911,45 +948,55 @@ void VulkanServer::destroyRenderPass(){
 	renderPass = VK_NULL_HANDLE;
 }
 
-bool VulkanServer::createDescriptorSetLayout(){
+bool VulkanServer::createDescriptorSetLayouts(){
 
-	VkDescriptorSetLayoutBinding spatialDescriptorBinding = {};
-	spatialDescriptorBinding.binding = 0;
-	spatialDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	VkDescriptorSetLayoutBinding cameraDescriptorBinding = {};
+	cameraDescriptorBinding.binding = 0;
+	cameraDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	// Since I can define an array of uniform with descriptorCount I can define the size of this array
-	spatialDescriptorBinding.descriptorCount = 1;
-	spatialDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-	VkDescriptorSetLayoutBinding meshDescriptorBinding = {};
-	meshDescriptorBinding.binding = 1;
-	meshDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	meshDescriptorBinding.descriptorCount = 1;
-	meshDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-	VkDescriptorSetLayoutBinding descriptors[] = {spatialDescriptorBinding, meshDescriptorBinding};
-	//VkDescriptorSetLayoutBinding descriptors[] = {spatialDescriptorBinding};
+	cameraDescriptorBinding.descriptorCount = 1;
+	cameraDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutCreateInfo.bindingCount = 2;
-	layoutCreateInfo.pBindings = descriptors;
+	layoutCreateInfo.bindingCount = 1;
+	layoutCreateInfo.pBindings = &cameraDescriptorBinding;
 
-	VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &descriptorSetLayout );
+	VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &cameraDescriptorSetLayout );
 	if(VK_SUCCESS != res){
-		print("[ERROR] Error during creation of descriptor layout");
+		print("[ERROR] Error during creation of camera descriptor layout");
 		return false;
 	}
 
-	print("[INFO] Uniform descriptor created");
+	VkDescriptorSetLayoutBinding meshesDescriptorBinding = {};
+	meshesDescriptorBinding.binding = 0;
+	meshesDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	meshesDescriptorBinding.descriptorCount = 1;
+	meshesDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	layoutCreateInfo.bindingCount = 1;
+	layoutCreateInfo.pBindings = &meshesDescriptorBinding;
+
+	res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &meshesDescriptorSetLayout );
+	if(VK_SUCCESS != res){
+		print("[ERROR] Error during creation of meshes descriptor layout");
+		return false;
+	}
+
+	print("[INFO] Uniform descriptor layouts created");
 	return true;
 }
 
-void VulkanServer::destroyDescriptorSetLayout(){
-	if(VK_NULL_HANDLE == descriptorSetLayout)
-		return;
+void VulkanServer::destroyDescriptorSetLayouts(){
+	if(VK_NULL_HANDLE != cameraDescriptorSetLayout){
+		vkDestroyDescriptorSetLayout(device, cameraDescriptorSetLayout, nullptr);
+		print("[INFO] camera uniform descriptor destroyed");
+	}
 
-	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-	print("[INFO] Uniform descriptor destroyed");
+	if(VK_NULL_HANDLE != meshesDescriptorSetLayout){
+		vkDestroyDescriptorSetLayout(device, meshesDescriptorSetLayout, nullptr);
+		print("[INFO] Meshe uniform descriptor destroyed");
+	}
 }
 
 #define SHADER_VERTEX_PATH "./shaders/bin/vert.spv"
@@ -1083,10 +1130,11 @@ bool VulkanServer::createGraphicsPipelines(){
 
 /// Pipeline layout (used to specify uniform variables)
 	{
+		VkDescriptorSetLayout layouts[] = {cameraDescriptorSetLayout, meshesDescriptorSetLayout};
 		VkPipelineLayoutCreateInfo layoutCreateInfo = {};
 		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		layoutCreateInfo.setLayoutCount = 1;
-		layoutCreateInfo.pSetLayouts = &descriptorSetLayout;
+		layoutCreateInfo.setLayoutCount = 2;
+		layoutCreateInfo.pSetLayouts = layouts;
 
 		if(VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout)){
 			print("[ERROR] Failed to create pipeline layout");
@@ -1274,44 +1322,54 @@ int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlag
 bool VulkanServer::createUniformBuffers(){
 
 	if( !createBuffer(bufferMemoryHostAllocator,
-					  sizeof(SceneUniformBufferObject),
+					  sizeof(CameraUniformBufferObject),
 					  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
 					  VMA_MEMORY_USAGE_CPU_TO_GPU,
-					  sceneUniformBuffer,
-					  sceneUniformBufferAllocation) ){
+					  cameraUniformBuffer,
+					  cameraUniformBufferAllocation) ){
 
 		print("[ERROR] Scene uniform buffer allocation failed");
 		return false;
 	}
 
+	// The below line of code is a bit operation that take correct multiple of physicalDeviceMinUniformBufferOffsetAlignment to use as alingment offset
+	// It works only when the physicalDeviceMinUniformBufferOffsetAlignment is a multiple of 2 (That in this case we can stay sure about it)
+	//
+	// Takes only the most significant bit of "sizeof(MeshUniformBufferObject) + physicalDeviceMinUniformBufferOffsetAlignment -1" that is for sure a multiple of
+	// physicalDeviceMinUniformBufferOffsetAlignment and a multiple of 2
+	meshDynamicUniformBufferOffset = (sizeof(MeshUniformBufferObject) + physicalDeviceMinUniformBufferOffsetAlignment -1) & ~(physicalDeviceMinUniformBufferOffsetAlignment -1);
+
 	if( !createBuffer(bufferMemoryHostAllocator,
-					  sizeof(MeshUniformBufferObject),
+					  meshDynamicUniformBufferOffset * MAX_MESH_COUNT,
 					  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
 					  VMA_MEMORY_USAGE_CPU_TO_GPU,
-					  meshUniformBuffer,
-					  meshUniformBufferAllocation) ){
+					  meshUniformBufferData.meshUniformBuffer,
+					  meshUniformBufferData.meshUniformBufferAllocation) ){
 
-		print("[ERROR] Mesh uniform buffer allocation failed");
+		print("[ERROR] Mesh uniform buffer allocation failed, mesh not added");
 		return false;
 	}
+
+	meshUniformBufferData.size = MAX_MESH_COUNT;
+	meshUniformBufferData.count = 0;
 
 	print("[INFO] uniform buffers allocation success");
 	return true;
 }
 
 void VulkanServer::destroyUniformBuffers(){
-	destroyBuffer(bufferMemoryHostAllocator, sceneUniformBuffer, sceneUniformBufferAllocation);
-	destroyBuffer(bufferMemoryHostAllocator, meshUniformBuffer, meshUniformBufferAllocation);
+	destroyBuffer(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBuffer, meshUniformBufferData.meshUniformBufferAllocation);
+	destroyBuffer(bufferMemoryHostAllocator, cameraUniformBuffer, cameraUniformBufferAllocation);
 	print("[INFO] All buffers was freed");
 }
 
-bool VulkanServer::createUniformPool(){
+bool VulkanServer::createUniformPools(){
 
 	VkDescriptorPoolSize poolSize = {};
 	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSize.descriptorCount = 2;
+	poolSize.descriptorCount = 1;
 
 	VkDescriptorPoolCreateInfo poolCreateInfo = {};
 	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -1319,66 +1377,98 @@ bool VulkanServer::createUniformPool(){
 	poolCreateInfo.pPoolSizes = &poolSize;
 	poolCreateInfo.maxSets = 1;
 
-	VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &descriptorPool);
+	VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &cameraDescriptorPool);
 	if(res!=VK_SUCCESS){
-		print("[ERROR] Error during creation of descriptor pool");
+		print("[ERROR] Error during creation of camera descriptor pool");
 	}
 
-	print("[INFO] Uniform pool created");
+	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	poolSize.descriptorCount = 1;
+
+	poolCreateInfo.poolSizeCount = 1;
+	poolCreateInfo.maxSets = 1;
+
+	res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &meshesDescriptorPool);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Error during creation of meshes descriptor pool");
+	}
+
+	print("[INFO] Uniform pools created");
 	return true;
 }
 
-void VulkanServer::destroyUniformPool(){
-	if(descriptorPool==VK_NULL_HANDLE)
-		return;
-	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-	descriptorPool = VK_NULL_HANDLE;
-	print("[INFO] Uniform pool destroyed");
+void VulkanServer::destroyUniformPools(){
+	if(cameraDescriptorPool!=VK_NULL_HANDLE){
+		vkDestroyDescriptorPool(device, cameraDescriptorPool, nullptr);
+		cameraDescriptorPool = VK_NULL_HANDLE;
+		print("[INFO] Camera uniform pool destroyed");
+	}
+
+	if(meshesDescriptorPool!=VK_NULL_HANDLE){
+		vkDestroyDescriptorPool(device, meshesDescriptorPool, nullptr);
+		meshesDescriptorPool = VK_NULL_HANDLE;
+		print("[INFO] Meshes uniform pool destroyed");
+	}
 }
 
 bool VulkanServer::allocateAndConfigureDescriptorSet(){
 
-	// Define the structure of uniform buffer
+	// Define the structure of camera uniform buffer
 	VkDescriptorSetAllocateInfo allocationInfo = {};
 	allocationInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocationInfo.descriptorPool = descriptorPool;
+	allocationInfo.descriptorPool = cameraDescriptorPool;
 	allocationInfo.descriptorSetCount = 1;
-	allocationInfo.pSetLayouts = &descriptorSetLayout;
+	allocationInfo.pSetLayouts = &cameraDescriptorSetLayout;
 
-	VkResult res = vkAllocateDescriptorSets(device, &allocationInfo, &descriptorSet);
+	VkResult res = vkAllocateDescriptorSets(device, &allocationInfo, &cameraDescriptorSet);
 	if(res!=VK_SUCCESS){
 		print("[ERROR] Allocation of descriptor set failed");
 		return false;
 	}
 
-	VkDescriptorBufferInfo sceneBufferInfo = {};
-	sceneBufferInfo.buffer = sceneUniformBuffer;
-	sceneBufferInfo.offset = 0;
-	sceneBufferInfo.range = sizeof(SceneUniformBufferObject);
+	VkDescriptorBufferInfo cameraBufferInfo = {};
+	cameraBufferInfo.buffer = cameraUniformBuffer;
+	cameraBufferInfo.offset = 0;
+	cameraBufferInfo.range = sizeof(CameraUniformBufferObject);
+
+	VkWriteDescriptorSet cameraWriteDescriptor = {};
+	cameraWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	cameraWriteDescriptor.dstSet = cameraDescriptorSet;
+	cameraWriteDescriptor.dstBinding = 0;
+	cameraWriteDescriptor.dstArrayElement = 0;
+	cameraWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	cameraWriteDescriptor.descriptorCount = 1;
+	cameraWriteDescriptor.pBufferInfo = &cameraBufferInfo;
+
+	vkUpdateDescriptorSets(device, 1, &cameraWriteDescriptor, 0, nullptr);
+
+	// Define the structure of meshes uniform buffer
+	allocationInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocationInfo.descriptorPool = meshesDescriptorPool;
+	allocationInfo.descriptorSetCount = 1;
+	allocationInfo.pSetLayouts = &meshesDescriptorSetLayout;
+
+	res = vkAllocateDescriptorSets(device, &allocationInfo, &meshesDescriptorSet);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Allocation of descriptor set failed");
+		return false;
+	}
 
 	VkDescriptorBufferInfo meshBufferInfo = {};
-	meshBufferInfo.buffer = meshUniformBuffer;
+	meshBufferInfo.buffer = meshUniformBufferData.meshUniformBuffer;
 	meshBufferInfo.offset = 0;
-	meshBufferInfo.range = sizeof(MeshUniformBufferObject);
+	meshBufferInfo.range = meshUniformBufferData.size * meshDynamicUniformBufferOffset;
 
-	VkWriteDescriptorSet writeDescriptors[] = {{}, {}};
-	writeDescriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDescriptors[0].dstSet = descriptorSet;
-	writeDescriptors[0].dstBinding = 0;
-	writeDescriptors[0].dstArrayElement = 0;
-	writeDescriptors[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	writeDescriptors[0].descriptorCount = 1;
-	writeDescriptors[0].pBufferInfo = &sceneBufferInfo;
+	VkWriteDescriptorSet meshesWriteDescriptor = {};
+	meshesWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	meshesWriteDescriptor.dstSet = meshesDescriptorSet;
+	meshesWriteDescriptor.dstBinding = 0;
+	meshesWriteDescriptor.dstArrayElement = 0;
+	meshesWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	meshesWriteDescriptor.descriptorCount = 1;
+	meshesWriteDescriptor.pBufferInfo = &meshBufferInfo;
 
-	writeDescriptors[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDescriptors[1].dstSet = descriptorSet;
-	writeDescriptors[1].dstBinding = 1;
-	writeDescriptors[1].dstArrayElement = 0;
-	writeDescriptors[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	writeDescriptors[1].descriptorCount = 1;
-	writeDescriptors[1].pBufferInfo = &meshBufferInfo;
-
-	vkUpdateDescriptorSets(device, 2, writeDescriptors, 0, nullptr);
+	vkUpdateDescriptorSets(device, 1, &meshesWriteDescriptor, 0, nullptr);
 
 	print("[INFO] Descriptor set created");
 	return true;
@@ -1468,13 +1558,16 @@ void VulkanServer::beginCommandBuffers(){
 		vkCmdBindPipeline(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
 		if(meshes.size()>0){
+			VkDescriptorSet descriptorsSets[] = {cameraDescriptorSet, VK_NULL_HANDLE};
 			// Bind buffers
 			for(int m = 0, s = meshes.size(); m<s; ++m){
 
-				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &meshes[m].vertexBuffer, &meshes[m].verticesBufferOffset);
-				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m].indexBuffer, meshes[m].indicesBufferOffset, VK_INDEX_TYPE_UINT32);
-				vkCmdDrawIndexed(drawCommandBuffers[i], meshes[m].mesh->getCountIndices(), 1, 0, 0, 0);
+				descriptorsSets[1] = meshesDescriptorSet; // TODOD set here the right descriptor set
+				uint32_t dynamicOffset = meshes[m]->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
+				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptorsSets, 1, &dynamicOffset);
+				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &meshes[m]->vertexBuffer, &meshes[m]->verticesBufferOffset);
+				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m]->indexBuffer, meshes[m]->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(drawCommandBuffers[i], meshes[m]->mesh->getCountIndices(), 1, 0, 0, 0);
 			}
 		}
 
@@ -1554,8 +1647,7 @@ void VulkanServer::removeAllMeshes(){
 	meshesCopyPending.clear();
 
 	for(int m = meshes.size() -1; 0<=m; --m){
-		destroyBuffer(bufferMemoryDeviceAllocator, meshes[m].vertexBuffer, meshes[m].vertexAllocation);
-		destroyBuffer(bufferMemoryDeviceAllocator, meshes[m].indexBuffer, meshes[m].indexAllocation);
+		removeMesh_internal(meshes[m]);
 	}
 	meshes.clear();
 	print("[INFO] All meshes removed from scene");
@@ -1617,18 +1709,17 @@ bool VulkanServer::checkValidationLayersSupport(const vector<const char*> &p_lay
 	return missing;
 }
 
-int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_deviceType){
+int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_deviceType, VkPhysicalDeviceProperties *r_deviceProps){
 
 	print("[INFO] Select physical device");
 
 	for(int i = p_devices.size()-1; 0<=i; --i){
 
 		// Check here the device
-		VkPhysicalDeviceProperties deviceProps;
 		VkPhysicalDeviceFeatures deviceFeatures;
 		uint32_t extensionsCount;
 
-		vkGetPhysicalDeviceProperties(p_devices[i], &deviceProps);
+		vkGetPhysicalDeviceProperties(p_devices[i], r_deviceProps);
 		vkGetPhysicalDeviceFeatures(p_devices[i], &deviceFeatures);
 
 		vkEnumerateDeviceExtensionProperties(p_devices[i], nullptr, &extensionsCount, nullptr);
@@ -1636,7 +1727,7 @@ int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_dev
 		vector<VkExtensionProperties> availableExtensions(extensionsCount);
 		vkEnumerateDeviceExtensionProperties(p_devices[i], nullptr, &extensionsCount, availableExtensions.data());
 
-		if( deviceProps.deviceType != p_deviceType)
+		if( r_deviceProps->deviceType != p_deviceType)
 			continue;
 
 		if( !deviceFeatures.geometryShader )
@@ -1705,7 +1796,8 @@ VisualServer::~VisualServer(){
 bool VisualServer::init(){
 
 	createWindow();
-	return vulkanServer.create(window);
+	const bool vulkanState = vulkanServer.create(window);
+	return vulkanState;
 }
 
 void VisualServer::terminate(){
@@ -1722,8 +1814,8 @@ void VisualServer::step(){
 	vulkanServer.draw();
 }
 
-void VisualServer::add_mesh(const Mesh *p_mesh){
-	vulkanServer.add_mesh(p_mesh);
+void VisualServer::addMesh(const Mesh *p_mesh){
+	vulkanServer.addMesh(p_mesh);
 }
 
 void VisualServer::createWindow(){

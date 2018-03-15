@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <memory>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -10,6 +12,7 @@
 #include <vector>
 #include <array>
 #include <cstring>
+#include <chrono>
 
 #include "libs/vma/vk_mem_alloc.h" // Includes only interfaces
 
@@ -92,9 +95,21 @@ struct Triangle{
 	uint32_t vertices[3];
 };
 
-struct Mesh{
+class VulkanServer;
+struct MeshHandle;
+
+class Mesh{
+	friend class VulkanServer;
+	unique_ptr<MeshHandle> meshHandle;
+	glm::mat4 transformation;
+
+public:
 	vector<Vertex> vertices;
 	vector<Triangle> triangles;
+
+public:
+	Mesh();
+	~Mesh();
 
 	// Return the size in bytes of vertices
 	const VkDeviceSize verticesSizeInBytes() const {
@@ -109,6 +124,38 @@ struct Mesh{
 	const uint32_t getCountIndices() const{
 		return triangles.size() * 3;
 	}
+
+	void setTransform(const glm::mat4 &p_transformation);
+	const glm::mat4& getTransform() const {
+		return transformation;
+	}
+};
+
+struct CameraUniformBufferObject{
+	glm::mat4 view;
+	glm::mat4 projection;
+};
+
+struct MeshUniformBufferObject{
+	glm::mat4 model;
+};
+
+// This struct is used to know handle the memory of mesh
+struct MeshHandle{
+	const Mesh *mesh;
+
+	size_t verticesSize;
+	VkDeviceSize verticesBufferOffset;
+	VkBuffer vertexBuffer;
+	VmaAllocation vertexAllocation;
+
+	size_t indicesSize;
+	VkDeviceSize indicesBufferOffset;
+	VkBuffer indexBuffer;
+	VmaAllocation indexAllocation;
+
+	uint32_t meshUniformBufferOffset;
+	bool hasTransformationChange;
 };
 
 class VulkanServer{
@@ -136,15 +183,6 @@ public:
 		vector<VkPresentModeKHR> presentModes;
 	};
 
-	struct SceneUniformBufferObject{
-		glm::mat4 view;
-		glm::mat4 projection;
-	};
-
-	struct MeshUniformBufferObject{
-		glm::mat4 model;
-	};
-
 	VulkanServer();
 
 	bool enableValidationLayer();
@@ -156,7 +194,10 @@ public:
 
 	void draw();
 
-	void add_mesh(const Mesh *p_mesh);
+	void addMesh(const Mesh *p_mesh);
+	void removeMesh_internal(MeshHandle* p_meshHandle);
+
+public:
 	void processCopy();
 	void updateUniformBuffer();
 
@@ -167,6 +208,7 @@ private:
 	VkDebugReportCallbackEXT debugCallback;
 	VkSurfaceKHR surface;
 	VkPhysicalDevice physicalDevice; // Destroyed automatically when instance is cleared
+	VkDeviceSize physicalDeviceMinUniformBufferOffsetAlignment;
 	VkDevice device;
 	VkQueue graphicsQueue;
 	VkQueue presentationQueue;
@@ -186,9 +228,12 @@ private:
 	VkShaderModule fragShaderModule;
 
 	VkRenderPass renderPass;
-	VkDescriptorSetLayout descriptorSetLayout; // Opaque object that has some information about uniform data
-	VkDescriptorPool descriptorPool;
-	VkDescriptorSet descriptorSet;
+	VkDescriptorSetLayout cameraDescriptorSetLayout; // Opaque object that has some information about how is composed a uniform datas
+	VkDescriptorPool cameraDescriptorPool; // The pool where to create the VkDescriptorPool
+	VkDescriptorSet cameraDescriptorSet; // Hold all reference to buffers and other data of description
+	VkDescriptorSetLayout meshesDescriptorSetLayout;
+	VkDescriptorPool meshesDescriptorPool;
+	VkDescriptorSet meshesDescriptorSet;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
@@ -198,10 +243,26 @@ private:
 
 	VmaAllocator bufferMemoryHostAllocator;
 
-	VkBuffer sceneUniformBuffer; // Used for scene
-	VmaAllocation sceneUniformBufferAllocation;
-	VkBuffer meshUniformBuffer; // Used for mesh
-	VmaAllocation meshUniformBufferAllocation;
+	VkBuffer cameraUniformBuffer;
+	VmaAllocation cameraUniformBufferAllocation;
+
+	struct DynamicMeshUniformBufferData{
+		VkBuffer meshUniformBuffer;
+		VmaAllocation meshUniformBufferAllocation;
+		uint32_t count;
+		uint32_t size;
+
+		DynamicMeshUniformBufferData()
+			: meshUniformBuffer(VK_NULL_HANDLE),
+			  meshUniformBufferAllocation(VK_NULL_HANDLE),
+			  count(0),
+			  size(0)
+		{}
+	};
+
+	// Dynamic uniform buffer used to store all mesh informations
+	uint32_t meshDynamicUniformBufferOffset;
+	DynamicMeshUniformBufferData meshUniformBufferData;
 
 	VkCommandPool graphicsCommandPool;
 
@@ -217,24 +278,9 @@ private:
 
 	bool reloadDrawCommandBuffer;
 
-	// This struct is used to know handle the memory of mesh
-	struct MeshHandle{
-		const Mesh *mesh;
-
-		size_t verticesSize;
-		VkDeviceSize verticesBufferOffset;
-		VkBuffer vertexBuffer;
-		VmaAllocation vertexAllocation;
-
-		size_t indicesSize;
-		VkDeviceSize indicesBufferOffset;
-		VkBuffer indexBuffer;
-		VmaAllocation indexAllocation;
-	};
-
-	vector<MeshHandle> meshes;
-	vector<MeshHandle> meshesCopyInProgress;
-	vector<MeshHandle> meshesCopyPending;
+	vector<MeshHandle*> meshes;
+	vector<MeshHandle*> meshesCopyInProgress;
+	vector<MeshHandle*> meshesCopyPending;
 
 private:
 
@@ -282,8 +328,8 @@ private:
 	void destroyRenderPass();
 
 	// Is the object that describe the uniform buffer
-	bool createDescriptorSetLayout();
-	void destroyDescriptorSetLayout();
+	bool createDescriptorSetLayouts();
+	void destroyDescriptorSetLayouts();
 
 	// The pipeline is the object that contains all commands of a particular rendering process
 	// Shader, Vertex inputs, viewports, etc..
@@ -315,8 +361,8 @@ private:
 	bool createUniformBuffers();
 	void destroyUniformBuffers();
 
-	bool createUniformPool();
-	void destroyUniformPool();
+	bool createUniformPools();
+	void destroyUniformPools();
 
 	bool allocateAndConfigureDescriptorSet();
 
@@ -345,7 +391,7 @@ private:
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
 
 	// Return the ID in the array of selected device
-	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device);
+	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device, VkPhysicalDeviceProperties *r_deviceProps);
 
 private:
 	void recreateSwapchain();
@@ -371,7 +417,7 @@ public:
 	bool can_step();
 	void step();
 
-	void add_mesh(const Mesh *p_mesh);
+	void addMesh(const Mesh *p_mesh);
 
 private:
 	VulkanServer vulkanServer;
