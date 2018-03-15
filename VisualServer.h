@@ -5,6 +5,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS
 #include "libs/glm/glm.hpp"
 #include "libs/glm/gtc/matrix_transform.hpp"
@@ -65,7 +66,7 @@ class GLFWwindow;
 //
 
 struct Vertex{
-	glm::vec2 pos;
+	glm::vec3 pos;
 	glm::vec4 color;
 
 	static VkVertexInputBindingDescription getBindingDescription(){
@@ -80,7 +81,7 @@ struct Vertex{
 		array<VkVertexInputAttributeDescription, 2> attr;
 		attr[0].binding = 0;
 		attr[0].location = 0;
-		attr[0].format = VK_FORMAT_R32G32_SFLOAT;
+		attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 		attr[0].offset = offsetof(Vertex, pos);
 
 		attr[1].binding = 0;

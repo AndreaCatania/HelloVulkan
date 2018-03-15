@@ -200,11 +200,6 @@ void VulkanServer::draw(){
 
 	updateUniformBuffer();
 
-	// TODO please improve this shit
-	// wait the presentQueue is idle to avoid validation layer to memory leak when it's not syn with GPU
-	// This is very bad approach and should be used semaphores
-	vkQueueWaitIdle(presentationQueue);
-
 	// Acquire the next image
 	uint32_t imageIndex;
 	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, LONGTIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
@@ -213,6 +208,10 @@ void VulkanServer::draw(){
 		recreateSwapchain();
 		return;
 	}
+
+	// This is used to be sure that the previous drawing has finished
+	vkWaitForFences(device, 1, &drawFinishFences[imageIndex], VK_TRUE, LONGTIMEOUT_NANOSEC );
+	vkResetFences(device, 1, &drawFinishFences[imageIndex]);
 
 	// Submit draw commands
 	VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
@@ -225,13 +224,9 @@ void VulkanServer::draw(){
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &drawCommandBuffers[imageIndex];
-
-	VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
-
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = signalSemaphores;
+	submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
 
-	vkResetFences(device, 1, &drawFinishFences[imageIndex]);
 	if( VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFinishFences[imageIndex]) ){
 		print("[ERROR not handled] Error during queue submission");
 		return;
@@ -241,7 +236,7 @@ void VulkanServer::draw(){
 	VkPresentInfoKHR presInfo = {};
 	presInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presInfo.waitSemaphoreCount = 1;
-	presInfo.pWaitSemaphores = signalSemaphores;
+	presInfo.pWaitSemaphores = &renderFinishedSemaphore;
 	presInfo.swapchainCount = 1;
 	presInfo.pSwapchains = &swapchain;
 	presInfo.pImageIndices = &imageIndex;
@@ -360,13 +355,6 @@ void VulkanServer::processCopy(){
 }
 
 void VulkanServer::updateUniformBuffer(){
-
-	// TODO Please use "push constants" to push data instead of this approach
-	// TODO Please implement it correctly with correctly handling of delta time with model data per mesh
-	static auto startTime = std::chrono::high_resolution_clock::now();
-
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
 	CameraUniformBufferObject sceneUBO = {};
 	sceneUBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
@@ -1531,7 +1519,7 @@ bool VulkanServer::allocateCommandBuffers(){
 
 void VulkanServer::beginCommandBuffers(){
 
-	vkWaitForFences(device, drawFinishFences.size(), drawFinishFences.data(), true, LONGTIMEOUT_NANOSEC);
+	vkWaitForFences(device, drawFinishFences.size(), drawFinishFences.data(), VK_TRUE, LONGTIMEOUT_NANOSEC);
 	for(int i = drawCommandBuffers.size() - 1; 0<=i; --i){
 
 		VkCommandBufferBeginInfo beginInfo = {};

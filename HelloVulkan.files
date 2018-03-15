@@ -1,3 +1,4 @@
+HelloVulkan.debug.supp
 libs/vma/vk_mem_alloc.h
 shaders/shader.vert
 shaders/shader.frag
