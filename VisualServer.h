@@ -57,12 +57,16 @@ class GLFWwindow;
 // Memory allocation is managed using library VulkanMemoryAllocator: https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
 //
 //
-// VERTEX BUFFER
+//	VERTEX BUFFER
 //     Contains all informations of vertices of a mesh
 //
-// INDEX BUFFER
-//     Contains the indices (ordered) that compose all triangles of mesh.
-//     The GPU submit the vertex data of VERTEX BUFFER to the shader according to the in	dex of INDEX BUFFER
+//	INDEX BUFFER
+//		Contains the indices (ordered) that compose all triangles of mesh.
+//		The GPU submit the vertex data of VERTEX BUFFER to the shader according to the in	dex of INDEX BUFFER
+//
+//	IMAGE LAYOUT
+//		The Layout of image tell the GPU how to store it in order to obtain the max performance for a particular operation, The layout of image can be changed or better to say transitioned
+//		The transition can be performed using a barrier where the transition is specified in the VkImageMemoryBarrier structure
 //
 
 struct Vertex{
@@ -421,6 +425,15 @@ private:
 	bool createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, VkImageView &r_imageView);
 	void destroyImageView(VkImageView &r_imageView);
 
+	// Command Buffers helpers
+	bool allocateCommand(VkCommandBuffer &r_commandBuffer);
+	void beginOneTimeCommand(VkCommandBuffer p_command);
+	bool endCommand(VkCommandBuffer p_command);
+	bool submitCommand(VkCommandBuffer p_command, VkFence p_fence);
+	bool submitWaitCommand(VkCommandBuffer p_command);
+	void freeCommand(VkCommandBuffer &r_command);
+
+	bool transitionImageLayout(VkImage p_image, VkFormat p_format, VkImageLayout p_oldLayout, VkImageLayout p_newLayout);
 };
 
 class VisualServer

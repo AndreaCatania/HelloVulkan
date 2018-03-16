@@ -131,6 +131,9 @@ bool VulkanServer::create(GLFWwindow* p_window){
 
 	lockupDeviceQueue();
 
+	if( !createCommandPool() )
+		return false;
+
 	if( !createDescriptorSetLayouts() )
 		return false;
 
@@ -152,9 +155,6 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !allocateAndConfigureDescriptorSet() )
 		return false;
 
-	if( !createCommandPool() )
-		return false;
-
 	if( !allocateCommandBuffers() )
 		return false;
 
@@ -170,12 +170,12 @@ void VulkanServer::destroy(){
 
 	removeAllMeshes();
 	destroySyncObjects();
-	destroyCommandPool();
 	destroyUniformPools();
 	destroyUniformBuffers();
 	destroyBufferMemoryHostAllocator();
 	destroyBufferMemoryDeviceAllocator();
 	destroySwapchain();
+	destroyCommandPool();
 	destroyDescriptorSetLayouts();
 	destroyLogicalDevice();
 	destroyDebugCallback();
@@ -309,7 +309,7 @@ void VulkanServer::processCopy(){
 		// Copy process end
 
 		// Clear command buffer
-		vkFreeCommandBuffers(device, graphicsCommandPool, 1,  &copyCommandBuffer);
+		freeCommand(copyCommandBuffer);
 
 		meshes.insert(meshes.end(), meshesCopyInProgress.begin(), meshesCopyInProgress.end());
 		meshesCopyInProgress.clear();
@@ -321,33 +321,19 @@ void VulkanServer::processCopy(){
 	if(meshesCopyPending.size()>0){
 
 		// Start new copy
-		VkCommandBufferBeginInfo copyBeginInfo = {};
-		copyBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		copyBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		beginOneTimeCommand(copyCommandBuffer);
 
-		vkBeginCommandBuffer(copyCommandBuffer, &copyBeginInfo);
 		for(int m = meshesCopyPending.size() -1; 0<=m; --m){
-
 			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m]->vertexBuffer, 0, meshesCopyPending[m]->verticesSize, meshesCopyPending[m]->mesh->vertices.data());
 			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m]->indexBuffer, 0, meshesCopyPending[m]->indicesSize, meshesCopyPending[m]->mesh->triangles.data());
 		}
 
-		if(VK_SUCCESS != vkEndCommandBuffer(copyCommandBuffer) ){
+		if( !endCommand(copyCommandBuffer) ){
 			print("[ERROR] Copy command buffer ending failed");
 			return;
 		}
 
-		VkSubmitInfo copySubmitInfo = {};
-		copySubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		copySubmitInfo.commandBufferCount = 1;
-		copySubmitInfo.pCommandBuffers = &copyCommandBuffer;
-
-		if( VK_SUCCESS != vkResetFences(device, 1, &copyFinishFence) ){
-			print("[ERROR] copy finish Fence reset error");
-			return;
-		}
-
-		if(VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &copySubmitInfo, copyFinishFence) ){
+		if( !submitCommand(copyCommandBuffer, copyFinishFence) ){
 			print("[ERROR] Copy command buffer submission failed");
 			return;
 		}
@@ -882,15 +868,25 @@ bool VulkanServer::createDepthTestResources(){
 		return false;
 	}
 
+	if( !transitionImageLayout(depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL) ){
+		print("[ERROR] Failed to change image layout");
+		return true;
+	}
+
 	print("[INFO] Depth test resources created");
 	return true;
 }
 
 void VulkanServer::destroyDepthTestResources(){
+
+	destroyImageView(depthImageView);
+	destroyImage(depthImage, depthImageMemory);
 	print("[INFO] Depth test resources destroyed");
 }
 
 bool VulkanServer::createRenderPass(){
+
+	VkAttachmentDescription attachments[2];
 
 	// Description of attachment
 	VkAttachmentDescription colorAttachmentDesc = {};
@@ -902,17 +898,36 @@ bool VulkanServer::createRenderPass(){
 	colorAttachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	colorAttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	attachments[0] = colorAttachmentDesc;
 
 	// Reference to attachment description
 	VkAttachmentReference colorAttachmentRef = {};
 	colorAttachmentRef.attachment = 0; // ID of description
 	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+	// Depth attachment
+	VkAttachmentDescription depthAttachmentDesc = {};
+	depthAttachmentDesc.format = findBestDepthFormat();
+	depthAttachmentDesc.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthAttachmentDesc.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depthAttachmentDesc.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachmentDesc.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	depthAttachmentDesc.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depthAttachmentDesc.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depthAttachmentDesc.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+	attachments[1] = depthAttachmentDesc;
+
+	// Depth attachment reference
+	VkAttachmentReference depthAttachmentRef = {};
+	depthAttachmentRef.attachment = 1;
+	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
 	// The subpass describe how an attachment should be treated during execution
 	VkSubpassDescription subpassDesc = {};
 	subpassDesc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpassDesc.colorAttachmentCount = 1;
 	subpassDesc.pColorAttachments = &colorAttachmentRef;
+	subpassDesc.pDepthStencilAttachment = &depthAttachmentRef;
 
 	// The dependency is something that lead the subpass order, is like a "barrier"
 	VkSubpassDependency dependency = {};
@@ -925,8 +940,8 @@ bool VulkanServer::createRenderPass(){
 
 	VkRenderPassCreateInfo renderPassCreateInfo = {};
 	renderPassCreateInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassCreateInfo.attachmentCount = 1;
-	renderPassCreateInfo.pAttachments = &colorAttachmentDesc;
+	renderPassCreateInfo.attachmentCount = 2;
+	renderPassCreateInfo.pAttachments = attachments;
 	renderPassCreateInfo.subpassCount = 1;
 	renderPassCreateInfo.pSubpasses = &subpassDesc;
 	renderPassCreateInfo.dependencyCount = 1;
@@ -1095,6 +1110,20 @@ bool VulkanServer::createGraphicsPipelines(){
 	viewportCreateInfo.scissorCount = 1;
 	viewportCreateInfo.pScissors = &scissor;
 
+/// Active depth test
+	VkPipelineDepthStencilStateCreateInfo depthCreateInfo = {};
+	depthCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+	depthCreateInfo.depthTestEnable = VK_TRUE;
+	depthCreateInfo.depthWriteEnable = VK_TRUE;
+	depthCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS; // less = close
+	depthCreateInfo.depthBoundsTestEnable = VK_FALSE;
+	depthCreateInfo.minDepthBounds = 0.;
+	depthCreateInfo.maxDepthBounds = 1.;
+	// Used to activate stencil buffer operations
+	depthCreateInfo.stencilTestEnable = VK_FALSE;
+	depthCreateInfo.front = {};
+	depthCreateInfo.back = {};
+
 /// Rasterizer
 	VkPipelineRasterizationStateCreateInfo rasterizerCreateInfo = {};
 	rasterizerCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -1156,6 +1185,7 @@ bool VulkanServer::createGraphicsPipelines(){
 	pipelineCreateInfo.pMultisampleState = &multisamplingCreateInfo;
 	pipelineCreateInfo.pColorBlendState = &colorBlendCreateInfo;
 	pipelineCreateInfo.layout = pipelineLayout;
+	pipelineCreateInfo.pDepthStencilState = &depthCreateInfo;
 
 	// Specifies which subpass of render pass use this pipeline
 	pipelineCreateInfo.renderPass = renderPass;
@@ -1228,13 +1258,18 @@ bool VulkanServer::createFramebuffers(){
 	swapchainFramebuffers.resize(swapchainImageViews.size());
 
 	bool error = false;
+	VkImageView attachments[2];
 	for(int i = swapchainFramebuffers.size() - 1; 0<=i; --i ){
+
+		// I'm using a single depthImageView since only one depth is drawen at a time due to semaphore set
+		attachments[0] = swapchainImageViews[i];
+		attachments[1] = depthImageView;
 
 		VkFramebufferCreateInfo bufferCreateInfo = {};
 		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		bufferCreateInfo.renderPass = renderPass;
-		bufferCreateInfo.attachmentCount = 1;
-		bufferCreateInfo.pAttachments = &swapchainImageViews[i];
+		bufferCreateInfo.attachmentCount = 2;
+		bufferCreateInfo.pAttachments = attachments;
 		bufferCreateInfo.width = swapchainExtent.width;
 		bufferCreateInfo.height = swapchainExtent.height;
 		bufferCreateInfo.layers = 1;
@@ -1503,6 +1538,7 @@ void VulkanServer::destroyCommandPool(){
 
 	// Since the command buffers are destroyed by this function here I want clear it
 	drawCommandBuffers.clear();
+	copyCommandBuffer = VK_NULL_HANDLE;
 }
 
 bool VulkanServer::allocateCommandBuffers(){
@@ -1521,6 +1557,7 @@ bool VulkanServer::allocateCommandBuffers(){
 		return false;
 	}
 
+	allocateInfo.commandBufferCount = 1;
 	if(VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, &copyCommandBuffer)){
 		print("[ERROR] Copy command buffer allocation failed");
 		return false;
@@ -1548,9 +1585,11 @@ void VulkanServer::beginCommandBuffers(){
 		renderPassBeginInfo.framebuffer = swapchainFramebuffers[i];
 		renderPassBeginInfo.renderArea.offset = {0,0};
 		renderPassBeginInfo.renderArea.extent = swapchainExtent;
-		renderPassBeginInfo.clearValueCount = 1;
-		VkClearValue clearColor = {0.,0.,0.,1.};
-		renderPassBeginInfo.pClearValues = &clearColor;
+		VkClearValue clearValues[2];
+		clearValues[0].color = {0.,0.,0.,1.};
+		clearValues[1].depthStencil = {1., 0}; // 1. Mean the furthest distance possible in the depth buffer that go from 0 to 1
+		renderPassBeginInfo.clearValueCount = 2;
+		renderPassBeginInfo.pClearValues = clearValues;
 
 		// Begin render pass
 		vkCmdBeginRenderPass(drawCommandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
@@ -1830,6 +1869,7 @@ bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height, VkFormat &p_
 	imageCreateInfo.format = p_format;
 	imageCreateInfo.extent.width = p_width;
 	imageCreateInfo.extent.height = p_height;
+	imageCreateInfo.extent.depth = 1;
 	imageCreateInfo.mipLevels = 1;
 	imageCreateInfo.arrayLayers = 1;
 	imageCreateInfo.tiling = p_tiling;
@@ -1893,6 +1933,178 @@ bool VulkanServer::createImageView(VkImage p_image, VkFormat p_format, VkImageAs
 void VulkanServer::destroyImageView(VkImageView &r_imageView){
 	vkDestroyImageView(device, r_imageView, nullptr );
 	r_imageView = VK_NULL_HANDLE;
+}
+
+bool VulkanServer::allocateCommand(VkCommandBuffer &r_command){
+	VkCommandBufferAllocateInfo allocateInfo = {};
+	allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocateInfo.commandPool = graphicsCommandPool;
+	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocateInfo.commandBufferCount = 1;
+
+	if(VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, &r_command)){
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanServer::beginOneTimeCommand(VkCommandBuffer p_command){
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	vkBeginCommandBuffer(p_command, &beginInfo);
+}
+
+bool VulkanServer::endCommand(VkCommandBuffer p_command){
+	if(VK_SUCCESS != vkEndCommandBuffer(p_command) ){
+		return false;
+	}
+	return true;
+}
+
+bool VulkanServer::submitCommand(VkCommandBuffer p_command, VkFence p_fence){
+
+	if(VK_NULL_HANDLE!=p_fence){
+		if( VK_SUCCESS != vkResetFences(device, 1, &p_fence) ){
+			return false;
+		}
+	}
+
+	VkSubmitInfo submitInfo = {};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &p_command;
+
+	if(VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, p_fence) ){
+		return false;
+	}
+	return true;
+}
+
+bool VulkanServer::submitWaitCommand(VkCommandBuffer p_command){
+
+	VkFence fence;
+	VkFenceCreateInfo fenceCreateInfo = {};
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+	if(VK_SUCCESS!=vkCreateFence(device, &fenceCreateInfo, nullptr, &fence)){
+		print("[ERROR] fence creation failed");
+		return false;
+	}
+
+	bool success = true;
+	if( submitCommand(p_command, fence) ){
+		if(VK_SUCCESS!=vkWaitForFences(device, 1, &fence, VK_TRUE, LONGTIMEOUT_NANOSEC)){
+			print("[ERROR] Fence wait error");
+			success = false;
+		}
+	}else{
+		print("[ERROR] submit command error");
+		success = false;
+	}
+
+	vkDestroyFence(device, fence, nullptr);
+
+	return success;
+}
+
+void VulkanServer::freeCommand(VkCommandBuffer &r_command){
+	if(VK_NULL_HANDLE==r_command)
+		return;
+	vkFreeCommandBuffers(device, graphicsCommandPool, 1, &r_command);
+	r_command = VK_NULL_HANDLE;
+}
+
+bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format, VkImageLayout p_oldLayout, VkImageLayout p_newLayout){
+
+	VkImageMemoryBarrier barrier = {};
+	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrier.oldLayout = p_oldLayout;
+	barrier.newLayout = p_newLayout;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.image = p_image;
+
+	if(p_newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL){
+		barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+
+		if(hasStencilComponent(p_format)){
+			barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+	}else{
+		barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+	}
+
+	barrier.subresourceRange.baseMipLevel = 0;
+	barrier.subresourceRange.levelCount = 1;
+	barrier.subresourceRange.baseArrayLayer = 0;
+	barrier.subresourceRange.layerCount = 1;
+
+	VkPipelineStageFlags srcStage;
+	VkPipelineStageFlags dstStage;
+
+	if(p_oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && p_newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL){
+
+		barrier.srcAccessMask = 0; // Because from undefined
+		barrier.dstAccessMask =	VK_ACCESS_TRANSFER_WRITE_BIT;
+
+		srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+
+	}else if(p_oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && p_newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL){
+
+		barrier.srcAccessMask = 0; // Because from undefined
+		barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+		srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		dstStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+
+	}else if(p_oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && p_newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL){
+
+		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+		srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+
+	}else{
+		print("[ERROR] layout transfer not supported ");
+		return false;
+	}
+
+	VkCommandBuffer command;
+	if( !allocateCommand(command) ){
+		print("[ERROR] command allocation failed, Image transition layout failed");
+		return false;
+	}
+
+	beginOneTimeCommand(command);
+
+	vkCmdPipelineBarrier(
+				command,
+				srcStage,
+				dstStage,
+				0,
+				0,
+				nullptr,
+				0,
+				nullptr,
+				1,
+				&barrier);
+
+	bool success = true;
+	if(endCommand(command)){
+		if( !submitWaitCommand(command) ){
+			print("[ERROR] command submit failed, Image transition layout failed");
+			success = false;
+		}
+	}else{
+		print("[ERROR] command ending failed, Image transition layout failed");
+		success = false;
+	}
+	freeCommand(command);
+	return success;
 }
 
 VisualServer::VisualServer()
