@@ -1,10 +1,10 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-layout(set = 0, binding=0) uniform SceneUniformBufferObject{
-  mat4 view;
+layout(set = 0, binding=0) uniform CameraUniformBufferObject{
+  mat4 transform;
   mat4 projection;
-} sceneUBO;
+} cameraUBO;
 
 layout(set = 1, binding=0) uniform MeshUniformBufferObject {
   mat4 model;
@@ -20,6 +20,6 @@ out gl_PerVertex{
 };
 
 void main(){
-  gl_Position = sceneUBO.projection * sceneUBO.view * meshUBO.model * vec4(vertexPosition, 1.0);
+  gl_Position = cameraUBO.projection * cameraUBO.transform * meshUBO.model * vec4(vertexPosition, 1.0);
   fragColor = vertexColor;
 }

@@ -67,6 +67,53 @@ void Mesh::setTransform(const glm::mat4 &p_transformation){
 	meshHandle->hasTransformationChange = true;
 }
 
+Camera::Camera()
+	: transform(1.),
+	  projection(1.),
+	  aspect(1),
+	  FOV(glm::radians(45.)),
+	  near(0.1),
+	  far(10),
+	  isDirty(true),
+	  isProjectionDirty(true)
+{}
+
+void Camera::setTransform(const glm::mat4 &p_transform){
+	transform = p_transform;
+	isDirty = true;
+}
+
+const glm::mat4 &Camera::getProjection() const {
+	if(isProjectionDirty){
+		const_cast<Camera*>(this)->reloadProjection();
+	}
+	return projection;
+}
+
+void Camera::reloadProjection(){
+	projection = glm::perspective(FOV, aspect, near, far);
+	isProjectionDirty = false;
+}
+
+void Camera::setAspect(uint32_t p_width, uint32_t p_height){
+	aspect = p_width / (float) p_height;
+	isDirty = true;
+	isProjectionDirty = true;
+}
+
+void Camera::setFOV_deg(float p_FOV_deg){
+	FOV = glm::radians(p_FOV_deg);
+	isDirty = true;
+	isProjectionDirty = true;
+}
+
+void Camera::setNearFar(float p_near, float p_far){
+	near = p_near;
+	far = p_far;
+	isDirty = true;
+	isProjectionDirty = true;
+}
+
 VulkanServer::VulkanServer() :
 	window(nullptr),
 	instance(VK_NULL_HANDLE),
@@ -161,6 +208,8 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !createSyncObjects() )
 		return false;
 
+	reloadCamera();
+
 	return true;
 }
 
@@ -201,7 +250,7 @@ void VulkanServer::draw(){
 
 	processCopy();
 
-	updateUniformBuffer();
+	updateUniformBuffers();
 
 	// Acquire the next image
 	uint32_t imageIndex;
@@ -343,16 +392,23 @@ void VulkanServer::processCopy(){
 	}
 }
 
-void VulkanServer::updateUniformBuffer(){
-
-	CameraUniformBufferObject sceneUBO = {};
-	sceneUBO.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-	sceneUBO.projection = glm::perspective(glm::radians(45.0f), swapchainExtent.width / (float) swapchainExtent.height, 0.1f, 10.0f);
+void VulkanServer::updateUniformBuffers(){
 
 	void* data;
-	vmaMapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation, &data);
-	memcpy(data, &sceneUBO, sizeof(CameraUniformBufferObject));
-	vmaUnmapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation);
+
+	// Update camera buffer
+	if( camera.isDirty ){
+
+		CameraUniformBufferObject sceneUBO = {};
+		sceneUBO.transform = camera.transform;
+		sceneUBO.projection = camera.getProjection();
+
+		vmaMapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation, &data);
+		memcpy(data, &sceneUBO, sizeof(CameraUniformBufferObject));
+		vmaUnmapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation);
+
+		camera.isDirty = false;
+	}
 
 	// Update mesh dynamic uniform buffers
 	vmaMapMemory(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBufferAllocation, &data);
@@ -1684,6 +1740,10 @@ void VulkanServer::destroySyncObjects(){
 	print("[INFO] Semaphores and Fences destroyed");
 }
 
+void VulkanServer::reloadCamera(){
+	camera.setAspect(swapchainExtent.width, swapchainExtent.height);
+}
+
 void VulkanServer::removeAllMeshes(){
 	meshesCopyPending.clear();
 
@@ -1796,6 +1856,7 @@ void VulkanServer::recreateSwapchain(){
 	// Recreate swapchain
 	destroySwapchain();
 	createSwapchain();
+	reloadCamera();
 	reloadDrawCommandBuffer = true;
 }
 

@@ -137,7 +137,7 @@ public:
 };
 
 struct CameraUniformBufferObject{
-	glm::mat4 view;
+	glm::mat4 transform;
 	glm::mat4 projection;
 };
 
@@ -161,6 +161,33 @@ struct MeshHandle{
 
 	uint32_t meshUniformBufferOffset;
 	bool hasTransformationChange;
+};
+
+class Camera{
+	friend class VulkanServer;
+
+	glm::mat4 transform;
+	glm::mat4 projection;
+	float aspect;
+	float FOV;
+	float near;
+	float far;
+
+	bool isDirty;
+	bool isProjectionDirty;
+
+public:
+	Camera();
+
+	void setTransform(const glm::mat4 &p_transform);
+	const glm::mat4 &getTransform() const {return transform;}
+
+	const glm::mat4 &getProjection() const;
+
+	void reloadProjection();
+	void setAspect(uint32_t p_width, uint32_t p_height);
+	void setFOV_deg(float p_FOV_deg);
+	void setNearFar(float p_near, float p_far);
 };
 
 class VulkanServer{
@@ -202,9 +229,11 @@ public:
 	void addMesh(const Mesh *p_mesh);
 	void removeMesh_internal(MeshHandle* p_meshHandle);
 
+	Camera &getCamera(){return camera;}
+
 public:
 	void processCopy();
-	void updateUniformBuffer();
+	void updateUniformBuffers();
 
 private:
 	GLFWwindow* window;
@@ -286,6 +315,8 @@ private:
 private:
 
 	bool reloadDrawCommandBuffer;
+
+	Camera camera;
 
 	vector<MeshHandle*> meshes;
 	vector<MeshHandle*> meshesCopyInProgress;
@@ -397,6 +428,8 @@ private:
 	bool createSyncObjects();
 	void destroySyncObjects();
 
+	void reloadCamera();
+
 	void removeAllMeshes();
 
 	bool checkInstanceExtensionsSupport(const vector<const char*> &p_required_extensions);
@@ -453,6 +486,8 @@ public:
 	void step();
 
 	void addMesh(const Mesh *p_mesh);
+
+	VulkanServer& getVulkanServer(){return vulkanServer;}
 
 private:
 	VulkanServer vulkanServer;
