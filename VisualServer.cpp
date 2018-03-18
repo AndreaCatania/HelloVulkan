@@ -12,6 +12,8 @@
 
 #define MAX_MESH_COUNT 5
 
+const glm::mat4 VulkanServer::COORDSYSTEMROTATOR = glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0.f, 1.f, 0.f));
+
 void print(string c){
 	cout << c << endl;
 }
@@ -71,9 +73,9 @@ Camera::Camera()
 	: transform(1.),
 	  projection(1.),
 	  aspect(1),
-	  FOV(glm::radians(45.)),
+	  FOV(glm::radians(60.)),
 	  near(0.1),
-	  far(10),
+	  far(100),
 	  isDirty(true),
 	  isProjectionDirty(true)
 {}
@@ -91,7 +93,7 @@ const glm::mat4 &Camera::getProjection() const {
 }
 
 void Camera::reloadProjection(){
-	projection = glm::perspective(FOV, aspect, near, far);
+	projection = glm::perspectiveRH_ZO(FOV, aspect, near, far);
 	isProjectionDirty = false;
 }
 
@@ -138,8 +140,8 @@ VulkanServer::VulkanServer() :
 	graphicsPipeline(VK_NULL_HANDLE),
 	bufferMemoryDeviceAllocator(VK_NULL_HANDLE),
 	bufferMemoryHostAllocator(VK_NULL_HANDLE),
-	cameraUniformBuffer(VK_NULL_HANDLE),
-	cameraUniformBufferAllocation(VK_NULL_HANDLE),
+	sceneUniformBuffer(VK_NULL_HANDLE),
+	sceneUniformBufferAllocation(VK_NULL_HANDLE),
 	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
 	renderFinishedSemaphore(VK_NULL_HANDLE),
@@ -253,6 +255,7 @@ void VulkanServer::draw(){
 	updateUniformBuffers();
 
 	// Acquire the next image
+	// TODO Please use a semaphore for each image instead of single semaphore
 	uint32_t imageIndex;
 	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, LONGTIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 	if(VK_ERROR_OUT_OF_DATE_KHR==acquireRes || VK_SUBOPTIMAL_KHR==acquireRes){
@@ -399,13 +402,13 @@ void VulkanServer::updateUniformBuffers(){
 	// Update camera buffer
 	if( camera.isDirty ){
 
-		CameraUniformBufferObject sceneUBO = {};
-		sceneUBO.transform = camera.transform;
-		sceneUBO.projection = camera.getProjection();
+		SceneUniformBufferObject sceneUBO = {};
+		sceneUBO.cameraView = camera.transform;
+		sceneUBO.cameraProjection = camera.getProjection();
 
-		vmaMapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation, &data);
-		memcpy(data, &sceneUBO, sizeof(CameraUniformBufferObject));
-		vmaUnmapMemory(bufferMemoryHostAllocator, cameraUniformBufferAllocation);
+		vmaMapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation, &data);
+		memcpy(data, &sceneUBO, sizeof(SceneUniformBufferObject));
+		vmaUnmapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation);
 
 		camera.isDirty = false;
 	}
@@ -1414,12 +1417,12 @@ int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlag
 bool VulkanServer::createUniformBuffers(){
 
 	if( !createBuffer(bufferMemoryHostAllocator,
-					  sizeof(CameraUniformBufferObject),
+					  sizeof(SceneUniformBufferObject),
 					  VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 					  VK_SHARING_MODE_EXCLUSIVE,
 					  VMA_MEMORY_USAGE_CPU_TO_GPU,
-					  cameraUniformBuffer,
-					  cameraUniformBufferAllocation) ){
+					  sceneUniformBuffer,
+					  sceneUniformBufferAllocation) ){
 
 		print("[ERROR] Scene uniform buffer allocation failed");
 		return false;
@@ -1453,7 +1456,7 @@ bool VulkanServer::createUniformBuffers(){
 
 void VulkanServer::destroyUniformBuffers(){
 	destroyBuffer(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBuffer, meshUniformBufferData.meshUniformBufferAllocation);
-	destroyBuffer(bufferMemoryHostAllocator, cameraUniformBuffer, cameraUniformBufferAllocation);
+	destroyBuffer(bufferMemoryHostAllocator, sceneUniformBuffer, sceneUniformBufferAllocation);
 	print("[INFO] All buffers was freed");
 }
 
@@ -1519,9 +1522,9 @@ bool VulkanServer::allocateAndConfigureDescriptorSet(){
 	}
 
 	VkDescriptorBufferInfo cameraBufferInfo = {};
-	cameraBufferInfo.buffer = cameraUniformBuffer;
+	cameraBufferInfo.buffer = sceneUniformBuffer;
 	cameraBufferInfo.offset = 0;
-	cameraBufferInfo.range = sizeof(CameraUniformBufferObject);
+	cameraBufferInfo.range = sizeof(SceneUniformBufferObject);
 
 	VkWriteDescriptorSet cameraWriteDescriptor = {};
 	cameraWriteDescriptor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

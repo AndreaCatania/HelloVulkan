@@ -5,6 +5,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define GLM_FORCE_RIGHT_HANDED
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_RADIANS
 #include "libs/glm/glm.hpp"
@@ -67,6 +68,17 @@ class GLFWwindow;
 //	IMAGE LAYOUT
 //		The Layout of image tell the GPU how to store it in order to obtain the max performance for a particular operation, The layout of image can be changed or better to say transitioned
 //		The transition can be performed using a barrier where the transition is specified in the VkImageMemoryBarrier structure
+//
+// VULKAN COORDINATE SYSTEM
+//		is right hand with positive Y that go down
+//		The depth = 1 is Z positive (far is positive)
+//
+//       -Y
+//        |
+//   -X --Z-- +X
+//        |
+//       +Y
+//
 //
 
 struct Vertex{
@@ -136,9 +148,9 @@ public:
 	}
 };
 
-struct CameraUniformBufferObject{
-	glm::mat4 transform;
-	glm::mat4 projection;
+struct SceneUniformBufferObject{
+	glm::mat4 cameraView;
+	glm::mat4 cameraProjection;
 };
 
 struct MeshUniformBufferObject{
@@ -163,6 +175,7 @@ struct MeshHandle{
 	bool hasTransformationChange;
 };
 
+/// Camera look along -Z
 class Camera{
 	friend class VulkanServer;
 
@@ -192,6 +205,8 @@ public:
 
 class VulkanServer{
 public:
+
+	static const glm::mat4 COORDSYSTEMROTATOR;
 
 	struct QueueFamilyIndices{
 		int graphicsFamilyIndex = -1;
@@ -281,8 +296,8 @@ private:
 
 	VmaAllocator bufferMemoryHostAllocator;
 
-	VkBuffer cameraUniformBuffer;
-	VmaAllocation cameraUniformBufferAllocation;
+	VkBuffer sceneUniformBuffer;
+	VmaAllocation sceneUniformBufferAllocation;
 
 	struct DynamicMeshUniformBufferData{
 		VkBuffer meshUniformBuffer;
