@@ -4,6 +4,8 @@
 
 #include <iostream>
 
+#include "libs/glm/gtc/random.hpp"
+
 class Ticker{
 
 public:
@@ -25,10 +27,6 @@ private:
 
 Ticker ticker;
 VisualServer vm;
-
-Mesh cubeMesh;
-Mesh mesh2;
-Mesh mesh3;
 
 void cubeMaker(Mesh &mesh){
 	mesh.vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f },{ 1.0f, 0.0f, 0.0f, 1.f } }));
@@ -53,41 +51,47 @@ void cubeMaker(Mesh &mesh){
 	mesh.triangles.push_back(Triangle({6,7,3}));
 }
 
+vector<Mesh*> meshes;
+glm::mat4 cameraBoom;
+float cameraBoomLenght = 20;
+
 void ready(){
 
 	// Update camera view
 	vm.getVulkanServer().getCamera().setNearFar(0.1, 100.);
 
-	glm::mat4 camTransform;
-	camTransform = glm::translate( glm::mat4(1.), glm::vec3(0., 0., 10.) );
-	//vm.getVulkanServer().getCamera().setTransform( camTransform );
-	vm.getVulkanServer().getCamera().lookAt(glm::vec3(10,10,10), glm::vec3(0,0,0));
+	cameraBoom = glm::mat4(1.);
+
+	meshes.resize(50);
+
+	float ballRadius = 20.;
 
 	// Create cubes
-	cubeMaker(cubeMesh);
-	cubeMesh.setTransform( glm::translate(glm::mat4(1.), glm::vec3(0., 0., 0.)) );
+	for(int i = meshes.size()-1; 0<=i; --i){
+		meshes[i] = new Mesh;
+		cubeMaker(*meshes[i]);
+		meshes[i]->setTransform( glm::translate(glm::mat4(1.), glm::ballRand(ballRadius)) );
+		vm.addMesh(meshes[i]);
+	}
+}
 
-	mesh2.vertices.push_back(Vertex({{0.f, 0.f, 0.2f}, {1.0f, 0.0f, 0.0f, 1.f}}));
-	mesh2.vertices.push_back(Vertex({{1.f, 0.f, 0.2f}, {1.0f, 0.0f, 0.0f, 1.f}}));
-	mesh2.vertices.push_back(Vertex({{0.f, 1.f, 0.2f}, {1.0f, 0.0f, 0.0f, 1.f}}));
-	mesh2.triangles.push_back(Triangle({0,1,2}));
-
-	mesh3.vertices.push_back(Vertex({{0.f, 0.f, 0.4f}, {1.0f, 0.0f, 0.0f, 1.f}}));
-	mesh3.vertices.push_back(Vertex({{1.f, 0.f, 0.f}, {0.0f, 1.0f, 0.0f, 1.f}}));
-	mesh3.vertices.push_back(Vertex({{0.f, 1.f, 0.f}, {0.0f, 0.0f, 1.0f, 1.f}}));
-	mesh3.triangles.push_back(Triangle({0,1,2}));
-
-	vm.addMesh(&cubeMesh);
-	vm.addMesh(&mesh2);
-	vm.addMesh(&mesh3);
+void exit(){
+	for(int i = meshes.size()-1; 0<=i; --i){
+		delete meshes[i];
+	}
 }
 
 void tick(float deltaTime){
 	cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
 
-	cubeMesh.setTransform(cubeMesh.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-	mesh2.setTransform(mesh2.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
-	mesh3.setTransform(mesh3.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(280.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+	Camera& cam = vm.getVulkanServer().getCamera();
+	glm::mat4 camTransform( glm::translate( glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght) ) );
+	cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(20.f), glm::vec3(0,1,0));
+	cam.setTransform( cameraBoom * camTransform );
+
+	for(int i = meshes.size()-1; 0<=i; --i){
+		meshes[i]->setTransform(glm::rotate(meshes[i]->getTransform(), deltaTime * glm::radians(90.0f), glm::vec3(1.0f, .0f, .0f)));
+	}
 }
 
 int main() {
@@ -100,6 +104,7 @@ int main() {
 			tick(ticker.getDeltaTime());
 			vm.step();
 		}
+		exit();
 	}
 
 	vm.terminate();

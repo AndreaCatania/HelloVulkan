@@ -10,7 +10,7 @@
 #define INITIAL_WINDOW_WIDTH 800
 #define INITIAL_WINDOW_HEIGHT 600
 
-#define MAX_MESH_COUNT 5
+#define MAX_MESH_COUNT 50
 
 // This rotate the camera view in order to make Coordinate system as:
 // Y+ Up
@@ -838,7 +838,6 @@ bool VulkanServer::createRawSwapchain(){
 	++imageCount;
 	if(chainDetails.capabilities.maxImageCount > 0) // 0 means no limits
 		imageCount = min(imageCount, chainDetails.capabilities.maxImageCount);
-
 
 	VkSwapchainCreateInfoKHR chainCreate = {};
 	chainCreate.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
