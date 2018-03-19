@@ -163,7 +163,6 @@ VulkanServer::VulkanServer() :
 	sceneUniformBufferAllocation(VK_NULL_HANDLE),
 	graphicsCommandPool(VK_NULL_HANDLE),
 	imageAvailableSemaphore(VK_NULL_HANDLE),
-	renderFinishedSemaphore(VK_NULL_HANDLE),
 	copyFinishFence(VK_NULL_HANDLE),
 	reloadDrawCommandBuffer(true)
 {
@@ -274,7 +273,6 @@ void VulkanServer::draw(){
 	updateUniformBuffers();
 
 	// Acquire the next image
-	// TODO Please use a semaphore for each image instead of single semaphore
 	uint32_t imageIndex;
 	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, LONGTIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 	if(VK_ERROR_OUT_OF_DATE_KHR==acquireRes || VK_SUBOPTIMAL_KHR==acquireRes){
@@ -299,7 +297,7 @@ void VulkanServer::draw(){
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &drawCommandBuffers[imageIndex];
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderFinishedSemaphore;
+	submitInfo.pSignalSemaphores = &renderFinishedSemaphores[imageIndex];
 
 	if( VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFinishFences[imageIndex]) ){
 		print("[ERROR not handled] Error during queue submission");
@@ -310,7 +308,7 @@ void VulkanServer::draw(){
 	VkPresentInfoKHR presInfo = {};
 	presInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presInfo.waitSemaphoreCount = 1;
-	presInfo.pWaitSemaphores = &renderFinishedSemaphore;
+	presInfo.pWaitSemaphores = &renderFinishedSemaphores[imageIndex];
 	presInfo.swapchainCount = 1;
 	presInfo.pSwapchains = &swapchain;
 	presInfo.pImageIndices = &imageIndex;
@@ -1709,27 +1707,48 @@ void VulkanServer::beginCommandBuffers(){
 
 bool VulkanServer::createSyncObjects(){
 
-	// Create semaphores
+	VkResult res;
+
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
 	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-	VkResult res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &imageAvailableSemaphore);
-	if(res!=VK_SUCCESS){
-		print("[ERROR] Semaphore creation failed");
-		return false;
-	}
-	res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderFinishedSemaphore);
-	if(res!=VK_SUCCESS){
-		print("[ERROR] Semaphore creation failed");
-		return false;
-	}
-
-	print("[INFO] Semaphores created");
 
 	// Create fences
 	VkFenceCreateInfo fenceCreateInfo = {};
 	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	renderFinishedSemaphores.resize(swapchainImages.size());
+	drawFinishFences.resize(swapchainImages.size());
+
+	bool success = true;
+	for(int i = swapchainImages.size()-1; 0<=i; --i){
+		// Create semaphores
+
+
+		res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderFinishedSemaphores[i]);
+		if(res!=VK_SUCCESS){
+			print("[ERROR] Semaphore creation failed");
+			success = false;
+			renderFinishedSemaphores[i] = VK_NULL_HANDLE;
+		}
+
+		res = vkCreateFence(device, &fenceCreateInfo, nullptr, &drawFinishFences[i]);
+		if(res!=VK_SUCCESS){
+			print("[ERROR] Draw fences creation failed");
+			success = false;
+			drawFinishFences[i] = VK_NULL_HANDLE;
+		}
+	}
+
+	if(!success){
+		return false;
+	}
+
+	res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &imageAvailableSemaphore);
+	if(res!=VK_SUCCESS){
+		print("[ERROR] Semaphore creation failed");
+		return false;
+	}
 
 	res = vkCreateFence(device, &fenceCreateInfo, nullptr, &copyFinishFence);
 	if(res!=VK_SUCCESS){
@@ -1737,29 +1756,28 @@ bool VulkanServer::createSyncObjects(){
 		return false;
 	}
 
-	drawFinishFences.resize(drawCommandBuffers.size());
-	for(int i = drawFinishFences.size()-1; 0<=i; --i){
-		res = vkCreateFence(device, &fenceCreateInfo, nullptr, &drawFinishFences[i]);
-		if(res!=VK_SUCCESS){
-			print("[ERROR] Draw fences creation failed");
-			return false;
-		}
-	}
+	print("[INFO] Semaphores and Fences created");
 
-	print("[INFO] Fences created");
 	return true;
 }
 
 void VulkanServer::destroySyncObjects(){
 
-	if(imageAvailableSemaphore != VK_NULL_HANDLE){
-		vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-		imageAvailableSemaphore = VK_NULL_HANDLE;
+	for(int i = swapchainImages.size()-1; 0<=i; --i){
+
+		if(renderFinishedSemaphores[i]!=VK_NULL_HANDLE)
+			vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+
+		if(drawFinishFences[i]!=VK_NULL_HANDLE)
+			vkDestroyFence(device, drawFinishFences[i], nullptr);
 	}
 
-	if(renderFinishedSemaphore != VK_NULL_HANDLE){
-		vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
-		renderFinishedSemaphore = VK_NULL_HANDLE;
+	renderFinishedSemaphores.clear();
+	drawFinishFences.clear();
+
+	if(imageAvailableSemaphore!=VK_NULL_HANDLE){
+		vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
+		imageAvailableSemaphore = VK_NULL_HANDLE;
 	}
 
 	if(copyFinishFence != VK_NULL_HANDLE){

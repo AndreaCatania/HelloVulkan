@@ -83,11 +83,11 @@ void ready(){
 }
 
 void tick(float deltaTime){
-	//cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
+	cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
 
 	cubeMesh.setTransform(cubeMesh.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
-	//mesh2.setTransform(mesh2.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
-	//mesh3.setTransform(mesh3.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(280.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+	mesh2.setTransform(mesh2.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
+	mesh3.setTransform(mesh3.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(280.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
 }
 
 int main() {

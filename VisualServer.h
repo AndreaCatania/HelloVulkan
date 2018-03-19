@@ -326,7 +326,7 @@ private:
 	VkCommandBuffer copyCommandBuffer; // Used to copy data to GPU
 
 	VkSemaphore imageAvailableSemaphore;
-	VkSemaphore renderFinishedSemaphore;
+	vector<VkSemaphore> renderFinishedSemaphores;
 
 	VkFence copyFinishFence;
 private:
