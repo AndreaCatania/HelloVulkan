@@ -3,6 +3,7 @@
 
 layout(set = 0, binding=0) uniform SceneUniformBufferObject{
   mat4 cameraView;
+  mat4 cameraViewInverse;
   mat4 cameraProjection;
 } scene;
 
@@ -20,6 +21,6 @@ out gl_PerVertex{
 };
 
 void main(){
-  gl_Position = scene.cameraProjection * scene.cameraView * meshUBO.model * vec4(vertexPosition, 1.0);
+  gl_Position = scene.cameraProjection * scene.cameraViewInverse * meshUBO.model * vec4(vertexPosition, 1.0);
   fragColor = vertexColor;
 }

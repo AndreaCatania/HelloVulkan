@@ -12,7 +12,11 @@
 
 #define MAX_MESH_COUNT 5
 
-const glm::mat4 VulkanServer::COORDSYSTEMROTATOR = glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0.f, 1.f, 0.f));
+// This rotate the camera view in order to make Coordinate system as:
+// Y+ Up
+// X+ Right
+// Z+ Backward
+const glm::mat4 VulkanServer::COORDSYSTEMROTATOR = glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0.f, 0.f, 1.f));
 
 void print(string c){
 	cout << c << endl;
@@ -79,6 +83,21 @@ Camera::Camera()
 	  isDirty(true),
 	  isProjectionDirty(true)
 {}
+
+void Camera::lookAt(const glm::vec3 &p_pos, const glm::vec3 &p_target){
+	glm::vec3 y(0, 1.f, 0);
+	glm::vec3 depth(glm::normalize(p_pos-p_target));
+	glm::vec3 x(glm::normalize(glm::cross(y, depth)));
+	y = glm::normalize(glm::cross(depth, x));
+
+	glm::mat4 mat;
+	mat[0] = glm::vec4(x, 0.);
+	mat[1] = glm::vec4(y, 0.);
+	mat[2] = glm::vec4(depth, 0);
+	mat[3] = glm::vec4(p_pos, 1.);
+
+	setTransform(mat);
+}
 
 void Camera::setTransform(const glm::mat4 &p_transform){
 	transform = p_transform;
@@ -403,7 +422,15 @@ void VulkanServer::updateUniformBuffers(){
 	if( camera.isDirty ){
 
 		SceneUniformBufferObject sceneUBO = {};
-		sceneUBO.cameraView = camera.transform;
+		glm::mat4 t(camera.transform);
+		// This is necessary since the Projection matrix invert Z (depth)
+		// and from RightHanded the Coordinate system becomes Left Handed
+		// This reset it to RightHanded but is also necessary to set Face orientation
+		// As Counter Clockwise
+		t[0] *= -1;
+		sceneUBO.cameraView = t * COORDSYSTEMROTATOR;
+		// Inverse is required since the camera should be moved inverselly to simulate world space positioning
+		sceneUBO.cameraViewInverse = glm::inverse(sceneUBO.cameraView);
 		sceneUBO.cameraProjection = camera.getProjection();
 
 		vmaMapMemory(bufferMemoryHostAllocator, sceneUniformBufferAllocation, &data);
@@ -1191,7 +1218,7 @@ bool VulkanServer::createGraphicsPipelines(){
 	rasterizerCreateInfo.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterizerCreateInfo.lineWidth = 1.;
 	rasterizerCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
-	rasterizerCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	rasterizerCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; // Counter clockwise is necessary to change Coordinate system
 	rasterizerCreateInfo.depthBiasEnable = VK_FALSE;
 
 /// Multisampling

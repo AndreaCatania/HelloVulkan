@@ -150,6 +150,7 @@ public:
 
 struct SceneUniformBufferObject{
 	glm::mat4 cameraView;
+	glm::mat4 cameraViewInverse;
 	glm::mat4 cameraProjection;
 };
 
@@ -192,6 +193,7 @@ class Camera{
 public:
 	Camera();
 
+	void lookAt(const glm::vec3 &p_pos, const glm::vec3 &p_target);
 	void setTransform(const glm::mat4 &p_transform);
 	const glm::mat4 &getTransform() const {return transform;}
 

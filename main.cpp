@@ -58,14 +58,14 @@ void ready(){
 	// Update camera view
 	vm.getVulkanServer().getCamera().setNearFar(0.1, 100.);
 
-
 	glm::mat4 camTransform;
-	camTransform = glm::translate( glm::mat4(1.), glm::vec3(0., 0., 0.) );
-	vm.getVulkanServer().getCamera().setTransform(camTransform);
+	camTransform = glm::translate( glm::mat4(1.), glm::vec3(0., 0., 10.) );
+	//vm.getVulkanServer().getCamera().setTransform( camTransform );
+	vm.getVulkanServer().getCamera().lookAt(glm::vec3(10,10,10), glm::vec3(0,0,0));
 
 	// Create cubes
 	cubeMaker(cubeMesh);
-	cubeMesh.setTransform( glm::translate(glm::mat4(1.), glm::vec3(4., 4., -10.)) );
+	cubeMesh.setTransform( glm::translate(glm::mat4(1.), glm::vec3(0., 0., 0.)) );
 
 	mesh2.vertices.push_back(Vertex({{0.f, 0.f, 0.2f}, {1.0f, 0.0f, 0.0f, 1.f}}));
 	mesh2.vertices.push_back(Vertex({{1.f, 0.f, 0.2f}, {1.0f, 0.0f, 0.0f, 1.f}}));
@@ -85,7 +85,7 @@ void ready(){
 void tick(float deltaTime){
 	//cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
 
-	//cubeMesh.setTransform(cubeMesh.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
+	cubeMesh.setTransform(cubeMesh.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f)));
 	//mesh2.setTransform(mesh2.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
 	//mesh3.setTransform(mesh3.getTransform() * glm::rotate(glm::mat4(1.0f), deltaTime * glm::radians(280.0f), glm::vec3(0.0f, 0.0f, 1.0f)));
 }
