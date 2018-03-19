@@ -767,7 +767,6 @@ VkPresentModeKHR VulkanServer::choosePresentMode(const vector<VkPresentModeKHR> 
 
 	for (const auto& pm : p_modes) {
 		if (pm == VK_PRESENT_MODE_MAILBOX_KHR) {
-			// This mode allow me to use triple buffer
 			return pm;
 		} else if (pm == VK_PRESENT_MODE_IMMEDIATE_KHR) {
 			bestMode = pm;
@@ -836,12 +835,10 @@ bool VulkanServer::createRawSwapchain(){
 
 	uint32_t imageCount = chainDetails.capabilities.minImageCount;
 	// Check it we can use triple buffer
-	// The mode MAILBOX is not required by vulkan to implement triple buffer
-	if(pMode == VK_PRESENT_MODE_MAILBOX_KHR){
-		++imageCount;
-		if(chainDetails.capabilities.maxImageCount > 0) // 0 means no limits
-			imageCount = min(imageCount, chainDetails.capabilities.maxImageCount);
-	}
+	++imageCount;
+	if(chainDetails.capabilities.maxImageCount > 0) // 0 means no limits
+		imageCount = min(imageCount, chainDetails.capabilities.maxImageCount);
+
 
 	VkSwapchainCreateInfoKHR chainCreate = {};
 	chainCreate.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
