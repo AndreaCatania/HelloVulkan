@@ -5,18 +5,22 @@ LDFLAGS = -L$(VULKAN_SDK_PATH)/lib `pkg-config --static --libs glfw3` -lvulkan
 
 SOURCES = main.cpp VisualServer.cpp mesh.cpp texture.cpp
 
+make_bin_dirs:
+	mkdir ./bin -p
+	mkdir ./shaders/bin -p
+
 shaders_compile:
 	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.vert -o ./shaders/bin/vert.spv
 	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.frag -o ./shaders/bin/frag.spv
 
 # PKG_CONFIG_PATH Location where to find glfw3.pc
 all: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
-all: shaders_compile export_pkg main.cpp
+all: make_bin_dirs shaders_compile main.cpp
 	g++ $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan
 
 # PKG_CONFIG_PATH Location where to find glfw3.pc
 debug: export PKG_CONFIG_PATH=$(GLFW3_LIB_PATH)
-debug: shaders_compile main.cpp
+debug: make_bin_dirs shaders_compile main.cpp
 	g++ -ggdb $(CFLAGS) ${SOURCES} $(LDFLAGS) -o ./bin/HelloVulkan.debug
 
 clean:
