@@ -1,11 +1,13 @@
 ﻿#include "VisualServer.h"
 
-#include <iostream>
-#include <fstream>
-
 // Implementation of VMA
 #define VMA_IMPLEMENTATION
 #include "libs/vma/vk_mem_alloc.h"
+
+#include "mesh.h"
+
+#include <iostream>
+#include <fstream>
 
 #define INITIAL_WINDOW_WIDTH 800
 #define INITIAL_WINDOW_HEIGHT 600
@@ -56,21 +58,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 	print( string("[VL ] ") + string(msg) );
 
 	return VK_FALSE;
-}
-
-Mesh::Mesh(){
-	meshHandle = unique_ptr<MeshHandle>(new MeshHandle);
-	meshHandle->mesh = this;
-	transformation = glm::mat4(1.f);
-}
-
-Mesh::~Mesh(){
-
-}
-
-void Mesh::setTransform(const glm::mat4 &p_transformation){
-	transformation = p_transformation;
-	meshHandle->hasTransformationChange = true;
 }
 
 Camera::Camera()

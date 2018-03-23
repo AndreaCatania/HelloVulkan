@@ -1,10 +1,8 @@
-﻿#include <iostream>
-
+﻿
 #include "VisualServer.h"
-
 #include <iostream>
-
 #include "libs/glm/gtc/random.hpp"
+#include "mesh.h"
 
 class Ticker{
 

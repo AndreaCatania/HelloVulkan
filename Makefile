@@ -3,7 +3,7 @@ GLFW3_LIB_PATH=/usr/local/lib/pkgconfig
 CFLAGS = -std=c++11 -I$(VULKAN_SDK_PATH)/include
 LDFLAGS = -L$(VULKAN_SDK_PATH)/lib `pkg-config --static --libs glfw3` -lvulkan
 
-SOURCES = main.cpp VisualServer.cpp
+SOURCES = main.cpp VisualServer.cpp mesh.cpp texture.cpp
 
 shaders_compile:
 	$(VULKAN_SDK_PATH)/bin/glslangValidator -V ./shaders/shader.vert -o ./shaders/bin/vert.spv

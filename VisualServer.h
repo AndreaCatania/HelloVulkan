@@ -1,26 +1,11 @@
 ﻿#pragma once
 
-#include <memory>
-
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-#define GLM_FORCE_RIGHT_HANDED
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_FORCE_RADIANS
-#include "libs/glm/glm.hpp"
-#include "libs/glm/gtc/matrix_transform.hpp"
-#include <string>
-#include <vector>
-#include <array>
-#include <cstring>
+#include "hellovulkan.h"
 #include <chrono>
 
-#include "libs/vma/vk_mem_alloc.h" // Includes only interfaces
-
-using namespace std;
-
 class GLFWwindow;
+class Mesh;
+struct MeshHandle;
 
 // RENDER IMAGE PROCESS
 // |
@@ -81,73 +66,6 @@ class GLFWwindow;
 //
 //
 
-struct Vertex{
-	glm::vec3 pos;
-	glm::vec4 color;
-
-	static VkVertexInputBindingDescription getBindingDescription(){
-		VkVertexInputBindingDescription desc = {};
-		desc.binding = 0;
-		desc.stride = sizeof(Vertex);
-		desc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-		return desc;
-	}
-
-	static array<VkVertexInputAttributeDescription, 2> getAttributesDescription(){
-		array<VkVertexInputAttributeDescription, 2> attr;
-		attr[0].binding = 0;
-		attr[0].location = 0;
-		attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-		attr[0].offset = offsetof(Vertex, pos);
-
-		attr[1].binding = 0;
-		attr[1].location = 1;
-		attr[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-		attr[1].offset = offsetof(Vertex, color);
-		return attr;
-	}
-};
-
-struct Triangle{
-	uint32_t vertices[3];
-};
-
-class VulkanServer;
-struct MeshHandle;
-
-class Mesh{
-	friend class VulkanServer;
-	unique_ptr<MeshHandle> meshHandle;
-	glm::mat4 transformation;
-
-public:
-	vector<Vertex> vertices;
-	vector<Triangle> triangles;
-
-public:
-	Mesh();
-	~Mesh();
-
-	// Return the size in bytes of vertices
-	const VkDeviceSize verticesSizeInBytes() const {
-		return sizeof(Vertex) * vertices.size();
-	}
-
-	// return the size in bytes of triangles indices
-	const VkDeviceSize indicesSizeInBytes() const {
-		return sizeof(Triangle) * triangles.size();
-	}
-
-	const uint32_t getCountIndices() const{
-		return triangles.size() * 3;
-	}
-
-	void setTransform(const glm::mat4 &p_transformation);
-	const glm::mat4& getTransform() const {
-		return transformation;
-	}
-};
-
 struct SceneUniformBufferObject{
 	glm::mat4 cameraView;
 	glm::mat4 cameraViewInverse;
@@ -156,24 +74,6 @@ struct SceneUniformBufferObject{
 
 struct MeshUniformBufferObject{
 	glm::mat4 model;
-};
-
-// This struct is used to know handle the memory of mesh
-struct MeshHandle{
-	const Mesh *mesh;
-
-	size_t verticesSize;
-	VkDeviceSize verticesBufferOffset;
-	VkBuffer vertexBuffer;
-	VmaAllocation vertexAllocation;
-
-	size_t indicesSize;
-	VkDeviceSize indicesBufferOffset;
-	VkBuffer indexBuffer;
-	VmaAllocation indexAllocation;
-
-	uint32_t meshUniformBufferOffset;
-	bool hasTransformationChange;
 };
 
 /// Camera look along -Z

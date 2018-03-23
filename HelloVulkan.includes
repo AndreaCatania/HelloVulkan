@@ -13,3 +13,4 @@ libs/glm/ext
 libs/glm
 shaders
 libs/vma
+libs/stb
