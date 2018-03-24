@@ -3,12 +3,18 @@
 
 #include "hellovulkan.h"
 
+class VisualServer;
 class VulkanServer;
 class Mesh;
 class Texture;
 
 // This struct is used to know handle the memory of mesh
 struct MeshHandle{
+
+	MeshHandle(VulkanServer *p_vulkanServer);
+	~MeshHandle();
+
+	VulkanServer* vulkanServer;
 	const Mesh *mesh;
 
 	size_t verticesSize;
@@ -23,6 +29,12 @@ struct MeshHandle{
 
 	uint32_t meshUniformBufferOffset;
 	bool hasTransformationChange;
+
+	VkDescriptorSet imageDescriptorSet;
+
+	void clear();
+	bool allocateImagesDescriptorSet();
+	void updateImages();
 };
 
 struct Vertex{
@@ -58,6 +70,8 @@ struct Triangle{
 
 class Mesh{
 	friend class VulkanServer;
+	friend class MeshHandle;
+
 	unique_ptr<MeshHandle> meshHandle;
 	glm::mat4 transformation;
 	Texture* colorTexture;
@@ -67,7 +81,7 @@ public:
 	vector<Triangle> triangles;
 
 public:
-	Mesh();
+	Mesh(VisualServer* p_visualServer);
 	~Mesh();
 
 	// Return the size in bytes of vertices

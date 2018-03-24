@@ -71,6 +71,9 @@ class Texture;
 //		The uniform buffer / image should be declared in the pipeline by useing set layout that is a description of it.
 //		Then is required to create a pool that is used to allocate descriptor set that is the object that refer to a particular resource
 //		it's possible to change the resource by using vkUpdateDescriptorSets
+//			. VkDescriptorSetLayout - Opaque object that has some information about how is composed a uniform object
+//			. VkDescriptorPool - The pool used to allocate DescriptorSet
+//			. VkDescriptorSet - Hold reference and description to buffers of set (buffer 0, buffer 1, etc..)
 
 struct SceneUniformBufferObject{
 	glm::mat4 cameraView;
@@ -114,6 +117,7 @@ public:
 class VulkanServer{
 public:
 	friend class Texture;
+	friend class MeshHandle;
 
 	static const glm::mat4 COORDSYSTEMROTATOR;
 
@@ -194,12 +198,21 @@ private:
 	VkShaderModule fragShaderModule;
 
 	VkRenderPass renderPass;
-	VkDescriptorSetLayout cameraDescriptorSetLayout; // Opaque object that has some information about how is composed a uniform datas
-	VkDescriptorPool cameraDescriptorPool; // The pool where to create the VkDescriptorPool
-	VkDescriptorSet cameraDescriptorSet; // Hold all reference to buffers and other data of description
+
+	// Used to store camera informations
+	VkDescriptorSetLayout cameraDescriptorSetLayout;
+	VkDescriptorPool cameraDescriptorPool;
+	VkDescriptorSet cameraDescriptorSet;
+
+	// Used to store mesh information in a dynamic buffer
 	VkDescriptorSetLayout meshesDescriptorSetLayout;
 	VkDescriptorPool meshesDescriptorPool;
 	VkDescriptorSet meshesDescriptorSet;
+
+	// Used to store mesh textures
+	VkDescriptorSetLayout meshImagesDescriptorSetLayout;
+	VkDescriptorPool meshImagesDescriptorPool;
+
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 

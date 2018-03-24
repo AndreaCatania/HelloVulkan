@@ -11,9 +11,7 @@ Texture::Texture(VisualServer* p_visualServer)
 	, imageMemory(VK_NULL_HANDLE)
 	, imageView(VK_NULL_HANDLE)
 	, imageSampler(VK_NULL_HANDLE)
-	, descriptorSet(VK_NULL_HANDLE)
 	, channels_of_image(4) // RGB Alpha
-	, ready(false)
 {}
 
 Texture::~Texture(){
@@ -91,9 +89,7 @@ bool Texture::load(const string &p_path){
 						if( vulkanServer->submitWaitCommand(commandBuffer)){
 							if( vulkanServer->transitionImageLayout(image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ){
 								if( _createSampler() ){
-									if(allocateConfigureDescriptorSet()){
-										success = true;
-									}
+									success = true;
 								}
 							}
 						}
@@ -109,8 +105,6 @@ bool Texture::load(const string &p_path){
 	if( !success ){
 		// cleanup in case of errors
 		clear();
-	}else{
-		ready = true;
 	}
 }
 
@@ -134,10 +128,6 @@ bool Texture::_createSampler(){
 }
 
 void Texture::clear(){
-	if(VK_NULL_HANDLE!=descriptorSet){
-		vkFreeDescriptorSets(vulkanServer->device, vulkanServer->meshesDescriptorPool, 1, &descriptorSet);
-		descriptorSet = VK_NULL_HANDLE;
-	}
 	if(VK_NULL_HANDLE!=imageSampler){
 		vkDestroySampler(vulkanServer->device, imageSampler, nullptr);
 		imageSampler = VK_NULL_HANDLE;
@@ -148,37 +138,4 @@ void Texture::clear(){
 	if(VK_NULL_HANDLE!=image){
 		vulkanServer->destroyImage(image, imageMemory);
 	}
-	ready = false;
-}
-
-bool Texture::allocateConfigureDescriptorSet(){
-
-	// Allocate
-	VkDescriptorSetAllocateInfo allocInfo = {};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = vulkanServer->meshesDescriptorPool;
-	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = &vulkanServer->meshesDescriptorSetLayout;
-
-	VkResult res = vkAllocateDescriptorSets(vulkanServer->device, &allocInfo, &descriptorSet );
-	if( res!=VK_SUCCESS ){
-		return false;
-	}
-
-	VkDescriptorImageInfo imageInfo = {};
-	imageInfo.sampler = imageSampler;
-	imageInfo.imageView = imageView;
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-	// Set image
-	VkWriteDescriptorSet writeDesc = {};
-	writeDesc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDesc.dstSet = descriptorSet;
-	writeDesc.descriptorCount = 1;
-	writeDesc.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-	writeDesc.pImageInfo = &imageInfo;
-
-	vkUpdateDescriptorSets(vulkanServer->device, 1, &writeDesc, 0, nullptr);
-
-	return true;
 }

@@ -13,6 +13,7 @@
 #define INITIAL_WINDOW_WIDTH 800
 #define INITIAL_WINDOW_HEIGHT 600
 
+// This cap is necessary because I've no memory management yet
 #define MAX_MESH_COUNT 50
 
 // This rotate the camera view in order to make Coordinate system as:
@@ -135,6 +136,7 @@ VulkanServer::VulkanServer() :
 	cameraDescriptorPool(VK_NULL_HANDLE),
 	meshesDescriptorSetLayout(VK_NULL_HANDLE),
 	meshesDescriptorPool(VK_NULL_HANDLE),
+	meshImagesDescriptorSetLayout(VK_NULL_HANDLE),
 	pipelineLayout(VK_NULL_HANDLE),
 	graphicsPipeline(VK_NULL_HANDLE),
 	bufferMemoryDeviceAllocator(VK_NULL_HANDLE),
@@ -1060,64 +1062,90 @@ void VulkanServer::destroyRenderPass(){
 
 bool VulkanServer::createDescriptorSetLayouts(){
 
-	// Camera uniform buffer set layout
-	VkDescriptorSetLayoutBinding cameraDescriptorBinding = {};
-	cameraDescriptorBinding.binding = 0;
-	cameraDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	// Since I can define an array of uniform with descriptorCount I can define the size of this array
-	cameraDescriptorBinding.descriptorCount = 1;
-	cameraDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	{
+		// Camera uniform buffer set layout
+		VkDescriptorSetLayoutBinding cameraDescriptorBinding = {};
+		cameraDescriptorBinding.binding = 0;
+		cameraDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		// Since I can define an array of uniform with descriptorCount I can define the size of this array
+		cameraDescriptorBinding.descriptorCount = 1;
+		cameraDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
-	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutCreateInfo.bindingCount = 1;
-	layoutCreateInfo.pBindings = &cameraDescriptorBinding;
+		VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
+		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutCreateInfo.bindingCount = 1;
+		layoutCreateInfo.pBindings = &cameraDescriptorBinding;
 
-	VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &cameraDescriptorSetLayout );
-	if(VK_SUCCESS != res){
-		print("[ERROR] Error during creation of camera descriptor layout");
-		return false;
+		VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &cameraDescriptorSetLayout );
+		if(VK_SUCCESS != res){
+			print("[ERROR] Error during creation of camera descriptor layout");
+			return false;
+		}
 	}
 
-	// Mesh dynamic uniform buffer
-	VkDescriptorSetLayoutBinding meshesDescriptorBinding = {};
-	meshesDescriptorBinding.binding = 0;
-	meshesDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	meshesDescriptorBinding.descriptorCount = 1;
-	meshesDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	{
+		// Mesh dynamic uniform buffer
+		VkDescriptorSetLayoutBinding meshesDescriptorBinding = {};
+		meshesDescriptorBinding.binding = 0;
+		meshesDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		meshesDescriptorBinding.descriptorCount = 1;
+		meshesDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	// Image + Sampler image set layout
-	VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
-	samplerLayoutBinding.binding = 1;
-	samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	samplerLayoutBinding.descriptorCount = 1;
-	samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
+		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutCreateInfo.bindingCount = 1;
+		layoutCreateInfo.pBindings = &meshesDescriptorBinding;
 
-	VkDescriptorSetLayoutBinding meshesBindings[] = {meshesDescriptorBinding, samplerLayoutBinding};
-	layoutCreateInfo.bindingCount = 2;
-	layoutCreateInfo.pBindings = meshesBindings;
-
-	res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &meshesDescriptorSetLayout );
-	if(VK_SUCCESS != res){
-		print("[ERROR] Error during creation of meshes descriptor layout");
-		return false;
+		VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &meshesDescriptorSetLayout );
+		if(VK_SUCCESS != res){
+			print("[ERROR] Error during creation of meshes descriptor layout");
+			return false;
+		}
 	}
 
+	{
+		// Image + Sampler image set layout
+		VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
+		samplerLayoutBinding.binding = 0;
+		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerLayoutBinding.descriptorCount = 1;
+		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+		VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
+		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutCreateInfo.bindingCount = 1;
+		layoutCreateInfo.pBindings = &samplerLayoutBinding;
 
-	print("[INFO] Uniform descriptor layouts created");
+		VkResult res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &meshImagesDescriptorSetLayout );
+		if(VK_SUCCESS != res){
+			print("[ERROR] Error during creation of image descriptor layout");
+			return false;
+		}
+	}
+
+	print("[INFO] Uniform descriptors layouts created");
 	return true;
 }
 
 void VulkanServer::destroyDescriptorSetLayouts(){
-	if(VK_NULL_HANDLE != cameraDescriptorSetLayout){
-		vkDestroyDescriptorSetLayout(device, cameraDescriptorSetLayout, nullptr);
-		print("[INFO] camera uniform descriptor destroyed");
+
+	if(VK_NULL_HANDLE != meshImagesDescriptorSetLayout){
+		vkDestroyDescriptorSetLayout(device, meshImagesDescriptorSetLayout, nullptr);
+		meshImagesDescriptorSetLayout = VK_NULL_HANDLE;
+		print("[INFO] Image descriptor layout destroyed");
+
 	}
 
 	if(VK_NULL_HANDLE != meshesDescriptorSetLayout){
 		vkDestroyDescriptorSetLayout(device, meshesDescriptorSetLayout, nullptr);
+		meshesDescriptorSetLayout = VK_NULL_HANDLE;
 		print("[INFO] Meshe uniform descriptor destroyed");
+	}
+
+	if(VK_NULL_HANDLE != cameraDescriptorSetLayout){
+		vkDestroyDescriptorSetLayout(device, cameraDescriptorSetLayout, nullptr);
+		cameraDescriptorSetLayout = VK_NULL_HANDLE;
+		print("[INFO] camera uniform descriptor destroyed");
 	}
 }
 
@@ -1266,10 +1294,10 @@ bool VulkanServer::createGraphicsPipelines(){
 
 /// Pipeline layout (used to specify uniform data)
 	{
-		VkDescriptorSetLayout layouts[] = {cameraDescriptorSetLayout, meshesDescriptorSetLayout};
+		VkDescriptorSetLayout layouts[] = {cameraDescriptorSetLayout, meshesDescriptorSetLayout, meshImagesDescriptorSetLayout};
 		VkPipelineLayoutCreateInfo layoutCreateInfo = {};
 		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		layoutCreateInfo.setLayoutCount = 2;
+		layoutCreateInfo.setLayoutCount = 3;
 		layoutCreateInfo.pSetLayouts = layouts;
 
 		if(VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr, &pipelineLayout)){
@@ -1528,21 +1556,37 @@ bool VulkanServer::createUniformPools(){
 	}
 
 	{ // Per Mesh uniform buffer pool
-		VkDescriptorPoolSize poolSizes[] = {{}, {}};
+		VkDescriptorPoolSize poolSize = {};
 		// Mesh dynamic buffer uniform
-		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		poolSizes[0].descriptorCount = 1;
-		// Image and sampler uniform
-		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		poolSizes[1].descriptorCount = 1;
+		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		poolSize.descriptorCount = 1;
 
 		VkDescriptorPoolCreateInfo poolCreateInfo = {};
 		poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolCreateInfo.poolSizeCount = 2;
-		poolCreateInfo.pPoolSizes = poolSizes;
+		poolCreateInfo.poolSizeCount = 1;
+		poolCreateInfo.pPoolSizes = &poolSize;
 		poolCreateInfo.maxSets = 1;
 
 		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &meshesDescriptorPool);
+		if(res!=VK_SUCCESS){
+			print("[ERROR] Error during creation of meshes descriptor pool");
+			return false;
+		}
+	}
+
+	{ // Per image uniform buffer pool
+		VkDescriptorPoolSize poolSize = {};
+		// Image and sampler uniform
+		poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSize.descriptorCount = MAX_MESH_COUNT; // one texture for mesh
+
+		VkDescriptorPoolCreateInfo poolCreateInfo = {};
+		poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolCreateInfo.poolSizeCount = 1;
+		poolCreateInfo.pPoolSizes = &poolSize;
+		poolCreateInfo.maxSets = MAX_MESH_COUNT;
+
+		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &meshImagesDescriptorPool);
 		if(res!=VK_SUCCESS){
 			print("[ERROR] Error during creation of meshes descriptor pool");
 			return false;
@@ -1639,8 +1683,6 @@ bool VulkanServer::allocateConfigureMeshesDescriptorSet(){
 	return true;
 }
 
-bool allocateAndConfigureDescriptorSet();
-
 bool VulkanServer::createCommandPool(){
 	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
 
@@ -1729,17 +1771,13 @@ void VulkanServer::beginCommandBuffers(){
 		vkCmdBindPipeline(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
 		if(meshes.size()>0){
-			// 0 camera, 1 mesh, 2 texture
+			// 0 camera, 1 mesh, 2 mesh images
 			VkDescriptorSet descriptorSets[] = {cameraDescriptorSet, VK_NULL_HANDLE, VK_NULL_HANDLE};
 			// Bind buffers
 			for(int m = 0, s = meshes.size(); m<s; ++m){
 				MeshHandle* mh = meshes[m];
 				descriptorSets[1] = meshesDescriptorSet; // TODOD set here the right descriptor set
-				if(mh->mesh->getColorTexture() && mh->mesh->getColorTexture()->isReady()){
-					descriptorSets[2] = mh->mesh->getColorTexture()->getDescriptorSet();
-				}else{
-					descriptorSets[2] = VK_NULL_HANDLE;
-				}
+				descriptorSets[2] = mh->imageDescriptorSet;
 				uint32_t dynamicOffset = mh->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
 
 				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptorSets, 1, &dynamicOffset);

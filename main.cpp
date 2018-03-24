@@ -102,14 +102,17 @@ void ready(){
 	texture = new Texture(&vm);
 	texture->load("assets/TestText.jpg");
 
-	triangleMesh = new Mesh;
+	triangleMesh = new Mesh(&vm);
 	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f } }));
 	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f } }));
 	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f, 1.0f, 1.f } }));
 	triangleMesh->triangles.push_back(Triangle({0,1,2}));
 	triangleMesh->setColorTexture(texture);
-
 	vm.addMesh(triangleMesh);
+
+	new Mesh(&vm);
+	new Mesh(&vm);
+
 #endif
 }
 
