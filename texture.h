@@ -22,6 +22,7 @@ class Texture{
 	int channels_of_image;
 
 public:
+	Texture(VulkanServer* p_vulkanServer);
 	Texture(VisualServer* p_visualServer);
 	~Texture();
 	bool load(const string &p_path);

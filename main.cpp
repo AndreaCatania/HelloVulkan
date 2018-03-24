@@ -103,15 +103,12 @@ void ready(){
 	texture->load("assets/TestText.jpg");
 
 	triangleMesh = new Mesh(&vm);
-	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f } }));
-	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f } }));
-	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f, 1.0f, 1.f } }));
+	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f }, {0., 1.} }));
+	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f }, {1., 0.} }));
+	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f, 1.0f, 1.f }, {1., 1.} }));
 	triangleMesh->triangles.push_back(Triangle({0,1,2}));
 	triangleMesh->setColorTexture(texture);
 	vm.addMesh(triangleMesh);
-
-	new Mesh(&vm);
-	new Mesh(&vm);
 
 #endif
 }
@@ -120,11 +117,13 @@ void exit(){
 
 #if CLOUDY_CUBES_TEST
 	for(int i = meshes.size()-1; 0<=i; --i){
+		vm.removeMesh(meshes[i]);
 		delete meshes[i];
 	}
 #endif
 
 #if TEXTURE_TEST
+	vm.removeMesh(triangleMesh);
 	delete triangleMesh;
 	triangleMesh;
 

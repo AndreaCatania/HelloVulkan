@@ -313,43 +313,39 @@ void VulkanServer::addMesh(const Mesh *p_mesh){
 		return;
 	}
 
-	if( !createBuffer(bufferMemoryDeviceAllocator,
-					  p_mesh->verticesSizeInBytes(),
-					  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-					  VK_SHARING_MODE_EXCLUSIVE,
-					  VMA_MEMORY_USAGE_GPU_ONLY,
-					  p_mesh->meshHandle->vertexBuffer,
-					  p_mesh->meshHandle->vertexAllocation) ){
-
-		print("[ERROR] Vertex buffer creation error, mesh not added");
-		return;
+	if( p_mesh->meshHandle->prepare() ){
+		meshesCopyPending.push_back(p_mesh->meshHandle.get());
 	}
-
-	if( !createBuffer(bufferMemoryDeviceAllocator,
-					  p_mesh->indicesSizeInBytes(),
-					  VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-					  VK_SHARING_MODE_EXCLUSIVE,
-					  VMA_MEMORY_USAGE_GPU_ONLY,
-					  p_mesh->meshHandle->indexBuffer,
-					  p_mesh->meshHandle->indexAllocation) ){
-
-		print("[ERROR] Index buffer creation error, mesh not added");
-		return;
-	}
-
-	p_mesh->meshHandle->verticesSize = p_mesh->verticesSizeInBytes();
-	p_mesh->meshHandle->verticesBufferOffset = 0;
-	p_mesh->meshHandle->indicesSize = p_mesh->indicesSizeInBytes();
-	p_mesh->meshHandle->indicesBufferOffset = 0;
-	p_mesh->meshHandle->meshUniformBufferOffset = meshUniformBufferData.count++;
-	p_mesh->meshHandle->hasTransformationChange = true;
-
-	meshesCopyPending.push_back(p_mesh->meshHandle.get());
 }
 
-void VulkanServer::removeMesh_internal(MeshHandle *p_meshHandle){
-	destroyBuffer(bufferMemoryDeviceAllocator, p_meshHandle->indexBuffer, p_meshHandle->indexAllocation);
-	destroyBuffer(bufferMemoryDeviceAllocator, p_meshHandle->vertexBuffer, p_meshHandle->vertexAllocation);
+void VulkanServer::removeMesh(const Mesh *p_mesh){
+	removeMesh(p_mesh->meshHandle.get());
+}
+
+void VulkanServer::removeMesh(MeshHandle *p_meshHandle){
+
+	// Make the removal in a way that wait iddle is not required
+	waitIdle();
+
+	int item = -1;
+	for(int i = meshes.size() -1; 0<=i; --i){
+		if(meshes[i]==p_meshHandle){
+			item = i;
+			break;
+		}
+	}
+
+	if(-1==item)
+		return;
+
+	size_t s = meshes.size();
+	if(1<s){
+		meshes[item] = meshes[s-1];
+		meshes.resize(s-1);
+	}else{
+		meshes.clear();
+	}
+	p_meshHandle->clear();
 }
 
 void VulkanServer::processCopy(){
@@ -1210,7 +1206,7 @@ bool VulkanServer::createGraphicsPipelines(){
 	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
 	vertexInputCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
 
-	array<VkVertexInputAttributeDescription, 2> vertexInputAttributesDescription = Vertex::getAttributesDescription();
+	array<VkVertexInputAttributeDescription, 3> vertexInputAttributesDescription = Vertex::getAttributesDescription();
 
 	vertexInputCreateInfo.vertexAttributeDescriptionCount = vertexInputAttributesDescription.size();
 	vertexInputCreateInfo.pVertexAttributeDescriptions = vertexInputAttributesDescription.data();
@@ -1582,6 +1578,7 @@ bool VulkanServer::createUniformPools(){
 
 		VkDescriptorPoolCreateInfo poolCreateInfo = {};
 		poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolCreateInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 		poolCreateInfo.poolSizeCount = 1;
 		poolCreateInfo.pPoolSizes = &poolSize;
 		poolCreateInfo.maxSets = MAX_MESH_COUNT;
@@ -1598,6 +1595,11 @@ bool VulkanServer::createUniformPools(){
 }
 
 void VulkanServer::destroyUniformPools(){
+	if(meshImagesDescriptorPool!=VK_NULL_HANDLE){
+		vkDestroyDescriptorPool(device, meshImagesDescriptorPool, nullptr);
+		meshImagesDescriptorPool = VK_NULL_HANDLE;
+		print("[INFO] Mesh images uniform pool destroyed");
+	}
 	if(cameraDescriptorPool!=VK_NULL_HANDLE){
 		vkDestroyDescriptorPool(device, cameraDescriptorPool, nullptr);
 		cameraDescriptorPool = VK_NULL_HANDLE;
@@ -1780,7 +1782,7 @@ void VulkanServer::beginCommandBuffers(){
 				descriptorSets[2] = mh->imageDescriptorSet;
 				uint32_t dynamicOffset = mh->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
 
-				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptorSets, 1, &dynamicOffset);
+				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 3, descriptorSets, 1, &dynamicOffset);
 				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &mh->vertexBuffer, &mh->verticesBufferOffset);
 				vkCmdBindIndexBuffer(drawCommandBuffers[i], mh->indexBuffer, mh->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
 				vkCmdDrawIndexed(drawCommandBuffers[i], mh->mesh->getCountIndices(), 1, 0, 0, 0);
@@ -1887,7 +1889,7 @@ void VulkanServer::removeAllMeshes(){
 	meshesCopyPending.clear();
 
 	for(int m = meshes.size() -1; 0<=m; --m){
-		removeMesh_internal(meshes[m]);
+		removeMesh(meshes[m]);
 	}
 	meshes.clear();
 	print("[INFO] All meshes removed from scene");
@@ -2336,6 +2338,10 @@ void VisualServer::step(){
 
 void VisualServer::addMesh(const Mesh *p_mesh){
 	vulkanServer.addMesh(p_mesh);
+}
+
+void VisualServer::removeMesh(const Mesh *p_mesh){
+	vulkanServer.removeMesh(p_mesh);
 }
 
 void VisualServer::createWindow(){

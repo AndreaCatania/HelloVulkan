@@ -6,7 +6,11 @@
 #include "VisualServer.h"
 
 Texture::Texture(VisualServer* p_visualServer)
-	: vulkanServer(p_visualServer->getVulkanServer())
+	: Texture(p_visualServer->getVulkanServer())
+{}
+
+Texture::Texture(VulkanServer* p_vulkanServer)
+	: vulkanServer(p_vulkanServer)
 	, image(VK_NULL_HANDLE)
 	, imageMemory(VK_NULL_HANDLE)
 	, imageView(VK_NULL_HANDLE)

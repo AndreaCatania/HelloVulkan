@@ -155,7 +155,8 @@ public:
 	void draw();
 
 	void addMesh(const Mesh *p_mesh);
-	void removeMesh_internal(MeshHandle* p_meshHandle);
+	void removeMesh(const Mesh* p_mesh);
+	void removeMesh(MeshHandle* p_meshHandle);
 
 	Camera &getCamera(){return camera;}
 
@@ -429,6 +430,7 @@ public:
 	void step();
 
 	void addMesh(const Mesh *p_mesh);
+	void removeMesh(const Mesh *p_mesh);
 
 	VulkanServer* getVulkanServer(){return &vulkanServer;}
 

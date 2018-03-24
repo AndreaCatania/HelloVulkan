@@ -29,17 +29,20 @@ struct MeshHandle{
 
 	uint32_t meshUniformBufferOffset;
 	bool hasTransformationChange;
+	bool isInScene;
 
 	VkDescriptorSet imageDescriptorSet;
 
 	void clear();
+	bool prepare();
 	bool allocateImagesDescriptorSet();
 	void updateImages();
 };
 
 struct Vertex{
 	glm::vec3 pos;
-	glm::vec4 color;
+	glm::vec4 color; // TODO remove it, it's useless
+	glm::vec2 textCoord; // UV
 
 	static VkVertexInputBindingDescription getBindingDescription(){
 		VkVertexInputBindingDescription desc = {};
@@ -49,8 +52,8 @@ struct Vertex{
 		return desc;
 	}
 
-	static array<VkVertexInputAttributeDescription, 2> getAttributesDescription(){
-		array<VkVertexInputAttributeDescription, 2> attr;
+	static array<VkVertexInputAttributeDescription, 3> getAttributesDescription(){
+		array<VkVertexInputAttributeDescription, 3> attr;
 		attr[0].binding = 0;
 		attr[0].location = 0;
 		attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -60,6 +63,12 @@ struct Vertex{
 		attr[1].location = 1;
 		attr[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
 		attr[1].offset = offsetof(Vertex, color);
+
+		attr[2].binding = 0;
+		attr[2].location = 2;
+		attr[2].format = VK_FORMAT_R32G32_SFLOAT;
+		attr[2].offset = offsetof(Vertex, textCoord);
+
 		return attr;
 	}
 };
@@ -72,6 +81,8 @@ class Mesh{
 	friend class VulkanServer;
 	friend class MeshHandle;
 
+	static Texture* defaultTexture;
+
 	unique_ptr<MeshHandle> meshHandle;
 	glm::mat4 transformation;
 	Texture* colorTexture;
@@ -79,6 +90,9 @@ class Mesh{
 public:
 	vector<Vertex> vertices;
 	vector<Triangle> triangles;
+
+public:
+	static Texture *getDefaultTeture(VulkanServer *v);
 
 public:
 	Mesh(VisualServer* p_visualServer);
