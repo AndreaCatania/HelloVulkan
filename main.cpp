@@ -4,6 +4,9 @@
 #include "mesh.h"
 #include "texture.h"
 
+#define CLOUDY_CUBES_TEST 0
+#define TEXTURE_TEST 1
+
 void print(string c){
 	cout << c << endl;
 }
@@ -57,10 +60,18 @@ void cubeMaker(Mesh &mesh){
 	mesh.triangles.push_back(Triangle({6,7,3}));
 }
 
-vector<Mesh*> meshes;
-Texture* texture;
 glm::mat4 cameraBoom;
+#if CLOUDY_CUBES_TEST
 float cameraBoomLenght = 20;
+vector<Mesh*> meshes;
+#endif
+
+#if TEXTURE_TEST
+float cameraBoomLenght = 5;
+Mesh* triangleMesh;
+Texture* texture;
+#endif
+
 
 void ready(){
 
@@ -69,9 +80,11 @@ void ready(){
 
 	cameraBoom = glm::mat4(1.);
 
-	texture = new Texture(&vm);
-	texture->load("assets/TestText.jpg");
+	Camera& cam = vm.getVulkanServer()->getCamera();
+	glm::mat4 camTransform( glm::translate( glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght) ) );
+	cam.setTransform( cameraBoom * camTransform );
 
+#if CLOUDY_CUBES_TEST
 	meshes.resize(50);
 	float ballRadius = 20.;
 
@@ -82,19 +95,45 @@ void ready(){
 		meshes[i]->setTransform( glm::translate(glm::mat4(1.), glm::ballRand(ballRadius)) );
 		vm.addMesh(meshes[i]);
 	}
+#endif
+
+#if TEXTURE_TEST
+
+	texture = new Texture(&vm);
+	texture->load("assets/TestText.jpg");
+
+	triangleMesh = new Mesh;
+	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f } }));
+	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f } }));
+	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f, 1.0f, 1.f } }));
+	triangleMesh->triangles.push_back(Triangle({0,1,2}));
+	triangleMesh->setColorTexture(texture);
+
+	vm.addMesh(triangleMesh);
+#endif
 }
 
 void exit(){
+
+#if CLOUDY_CUBES_TEST
 	for(int i = meshes.size()-1; 0<=i; --i){
 		delete meshes[i];
 	}
+#endif
+
+#if TEXTURE_TEST
+	delete triangleMesh;
+	triangleMesh;
 
 	delete texture;
 	texture = nullptr;
+#endif
 }
 
 void tick(float deltaTime){
 	//cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
+
+#if CLOUDY_CUBES_TEST
 
 	Camera& cam = vm.getVulkanServer()->getCamera();
 	glm::mat4 camTransform( glm::translate( glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght) ) );
@@ -104,6 +143,7 @@ void tick(float deltaTime){
 	for(int i = meshes.size()-1; 0<=i; --i){
 		meshes[i]->setTransform(glm::rotate(meshes[i]->getTransform(), deltaTime * glm::radians(90.0f), glm::vec3(1.0f, .0f, .0f)));
 	}
+#endif
 }
 
 int main() {
