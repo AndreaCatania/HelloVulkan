@@ -116,7 +116,8 @@ void Camera::setNearFar(float p_near, float p_far){
 	isProjectionDirty = true;
 }
 
-VulkanServer::VulkanServer() :
+VulkanServer::VulkanServer(VisualServer *p_visualServer)
+	: visualServer(p_visualServer),
 	window(nullptr),
 	instance(VK_NULL_HANDLE),
 	debugCallback(VK_NULL_HANDLE),
@@ -306,25 +307,29 @@ void VulkanServer::draw(){
 	}
 }
 
-void VulkanServer::addMesh(const Mesh *p_mesh){
+void VulkanServer::addMesh(Mesh *p_mesh){
 
 	if( meshUniformBufferData.count >= meshUniformBufferData.size){
 		print("[ERROR] Max mesh limit reached, can't add more meshes");
 		return;
 	}
 
+	if( p_mesh->meshHandle )
+		return;
+
+	p_mesh->meshHandle = new MeshHandle(p_mesh, this);
 	if( p_mesh->meshHandle->prepare() ){
-		meshesCopyPending.push_back(p_mesh->meshHandle.get());
+		meshesCopyPending.push_back(p_mesh->meshHandle);
 	}
 }
 
-void VulkanServer::removeMesh(const Mesh *p_mesh){
-	removeMesh(p_mesh->meshHandle.get());
+void VulkanServer::removeMesh(Mesh *p_mesh){
+	removeMesh(p_mesh->meshHandle);
 }
 
 void VulkanServer::removeMesh(MeshHandle *p_meshHandle){
 
-	// Make the removal in a way that wait iddle is not required
+	// TODO Make the removal in a way that wait iddle is not required
 	waitIdle();
 
 	int item = -1;
@@ -345,7 +350,9 @@ void VulkanServer::removeMesh(MeshHandle *p_meshHandle){
 	}else{
 		meshes.clear();
 	}
-	p_meshHandle->clear();
+
+	p_meshHandle->mesh->meshHandle = nullptr;
+	delete p_meshHandle;
 }
 
 void VulkanServer::processCopy(){
@@ -2309,7 +2316,10 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format, VkI
 }
 
 VisualServer::VisualServer()
-	: window(nullptr) {}
+	: defaultTexture(nullptr),
+	  window(nullptr),
+	  vulkanServer(this)
+{}
 
 VisualServer::~VisualServer(){
 
@@ -2319,10 +2329,15 @@ bool VisualServer::init(){
 
 	createWindow();
 	const bool vulkanState = vulkanServer.create(window);
+
+	defaultTexture = new Texture(&vulkanServer);
+	defaultTexture->load("assets/default.png");
+
 	return vulkanState;
 }
 
 void VisualServer::terminate(){
+	delete defaultTexture;
 	vulkanServer.destroy();
 	freeWindow();
 }
@@ -2336,11 +2351,11 @@ void VisualServer::step(){
 	vulkanServer.draw();
 }
 
-void VisualServer::addMesh(const Mesh *p_mesh){
+void VisualServer::addMesh(Mesh *p_mesh){
 	vulkanServer.addMesh(p_mesh);
 }
 
-void VisualServer::removeMesh(const Mesh *p_mesh){
+void VisualServer::removeMesh(Mesh *p_mesh){
 	vulkanServer.removeMesh(p_mesh);
 }
 

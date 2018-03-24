@@ -96,7 +96,7 @@ void ready(){
 
 	// Create cubes
 	for(int i = meshes.size()-1; 0<=i; --i){
-		meshes[i] = new Mesh(&vm);
+		meshes[i] = new Mesh;
 		meshes[i]->setColorTexture(texture);
 		cubeMaker(meshes[i]);
 		meshes[i]->setTransform( glm::translate(glm::mat4(1.), glm::ballRand(ballRadius)) );
@@ -109,7 +109,7 @@ void ready(){
 	texture = new Texture(&vm);
 	texture->load("assets/TestText.jpg");
 
-	triangleMesh = new Mesh(&vm);
+	triangleMesh = new Mesh;
 	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, {0., 1.} }));
 	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, {1., 0.} }));
 	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, {1., 1.} }));

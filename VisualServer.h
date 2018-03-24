@@ -3,6 +3,7 @@
 #include "hellovulkan.h"
 #include <chrono>
 
+class VisualServer;
 class GLFWwindow;
 class Mesh;
 struct MeshHandle;
@@ -143,7 +144,7 @@ public:
 		vector<VkPresentModeKHR> presentModes;
 	};
 
-	VulkanServer();
+	VulkanServer(VisualServer *p_visualServer);
 
 	bool enableValidationLayer();
 
@@ -154,8 +155,8 @@ public:
 
 	void draw();
 
-	void addMesh(const Mesh *p_mesh);
-	void removeMesh(const Mesh* p_mesh);
+	void addMesh(Mesh *p_mesh);
+	void removeMesh(Mesh* p_mesh);
 	void removeMesh(MeshHandle* p_meshHandle);
 
 	Camera &getCamera(){return camera;}
@@ -170,6 +171,7 @@ public:
 
 private:
 	GLFWwindow* window;
+	VisualServer* visualServer;
 
 	VkInstance instance;
 	VkDebugReportCallbackEXT debugCallback;
@@ -413,12 +415,14 @@ private:
 	bool transitionImageLayout(VkImage p_image, VkFormat p_format, VkImageLayout p_oldLayout, VkImageLayout p_newLayout);
 };
 
-class VisualServer
-{
-public:
+class VisualServer{
 	friend class VulkanServer;
 
+	Texture* defaultTexture;
 	GLFWwindow* window;
+	VulkanServer vulkanServer;
+
+public:
 
 	VisualServer();
 	~VisualServer();
@@ -429,14 +433,13 @@ public:
 	bool can_step();
 	void step();
 
-	void addMesh(const Mesh *p_mesh);
-	void removeMesh(const Mesh *p_mesh);
+	void addMesh(Mesh *p_mesh);
+	void removeMesh(Mesh *p_mesh);
 
-	VulkanServer* getVulkanServer(){return &vulkanServer;}
+	VulkanServer* getVulkanServer() {return &vulkanServer;}
+	const Texture *getDefaultTeture() const {return defaultTexture;}
 
 private:
-	VulkanServer vulkanServer;
-
 	void createWindow();
 	void freeWindow();
 };

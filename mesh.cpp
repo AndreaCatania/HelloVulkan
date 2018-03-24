@@ -4,14 +4,14 @@
 #include "VisualServer.h"
 #include "texture.h"
 
-MeshHandle::MeshHandle(VulkanServer* p_vulkanServer)
-	: vulkanServer(p_vulkanServer),
+MeshHandle::MeshHandle(Mesh* p_mesh, VulkanServer* p_vulkanServer)
+	: mesh(p_mesh),
+	  vulkanServer(p_vulkanServer),
 	  vertexBuffer(VK_NULL_HANDLE),
 	  vertexAllocation(VK_NULL_HANDLE),
 	  indexBuffer(VK_NULL_HANDLE),
 	  indexAllocation(VK_NULL_HANDLE),
-	  imageDescriptorSet(VK_NULL_HANDLE),
-	  isInScene(false)
+	  imageDescriptorSet(VK_NULL_HANDLE)
 {}
 
 MeshHandle::~MeshHandle(){
@@ -66,9 +66,9 @@ bool MeshHandle::prepare(){
 
 		print("[ERROR] Mesh images allocation failed");
 		clear();
+		return false;
 	}
 
-	isInScene = true;
 	updateImages();
 
 	return true;
@@ -92,9 +92,6 @@ bool MeshHandle::allocateImagesDescriptorSet(){
 
 void MeshHandle::updateImages(){
 
-	if(!isInScene)
-		return;
-
 	VkDescriptorImageInfo imageInfo = {};
 	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -110,41 +107,30 @@ void MeshHandle::updateImages(){
 		imageInfo.sampler = mesh->colorTexture->imageSampler;
 		imageInfo.imageView = mesh->colorTexture->imageView;
 	}else{
-		imageInfo.sampler = Mesh::getDefaultTeture(vulkanServer)->imageSampler;
-		imageInfo.imageView = Mesh::getDefaultTeture(vulkanServer)->imageView;
+		imageInfo.sampler = vulkanServer->visualServer->getDefaultTeture()->imageSampler;
+		imageInfo.imageView = vulkanServer->visualServer->getDefaultTeture()->imageView;
 	}
 
 	vkUpdateDescriptorSets(vulkanServer->device, 1, &writeDesc, 0, nullptr);
 }
 
-// TODO destroy it
-Texture* Mesh::defaultTexture = nullptr;
-
-Texture* Mesh::getDefaultTeture(VulkanServer* v){
-	if(!defaultTexture){
-		defaultTexture = new Texture(v);
-		defaultTexture->load("assets/default.png");
-	}
-	return defaultTexture;
-}
-
-Mesh::Mesh(VisualServer* p_visualServer)
+Mesh::Mesh()
 	: colorTexture( nullptr )
-{
-	// TODO Create this inside the VulkanServer and only when is added to the scene
-	meshHandle = unique_ptr<MeshHandle>(new MeshHandle(p_visualServer->getVulkanServer()));
-	meshHandle->mesh = this;
-	transformation = glm::mat4(1.f);
-}
+	, meshHandle(nullptr)
+	, transformation(1.f)
+{}
 
 Mesh::~Mesh(){}
 
-void Mesh::setTransform(const glm::mat4 &p_transformation){
-	transformation = p_transformation;
-	meshHandle->hasTransformationChange = true;
-}
-
 void Mesh::setColorTexture(Texture* p_colorTexture){
 	colorTexture = p_colorTexture;
-	meshHandle->updateImages();
+	if(meshHandle)
+		meshHandle->updateImages();
 }
+
+void Mesh::setTransform(const glm::mat4 &p_transformation){
+	transformation = p_transformation;
+	if(meshHandle)
+		meshHandle->hasTransformationChange = true;
+}
+

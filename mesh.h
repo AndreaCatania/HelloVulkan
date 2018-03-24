@@ -13,7 +13,7 @@ class MeshHandle{
 public:
 
 	VulkanServer* vulkanServer;
-	const Mesh *mesh;
+	Mesh *mesh;
 
 	size_t verticesSize;
 	VkDeviceSize verticesBufferOffset;
@@ -27,11 +27,10 @@ public:
 
 	uint32_t meshUniformBufferOffset;
 	bool hasTransformationChange;
-	bool isInScene;
 
 	VkDescriptorSet imageDescriptorSet;
 
-	MeshHandle(VulkanServer *p_vulkanServer);
+	MeshHandle(Mesh *p_mesh, VulkanServer *p_vulkanServer);
 	~MeshHandle();
 
 	void clear();
@@ -76,21 +75,17 @@ class Mesh{
 	friend class VulkanServer;
 	friend class MeshHandle;
 
-	static Texture* defaultTexture;
+	MeshHandle* meshHandle;
 
-	unique_ptr<MeshHandle> meshHandle;
-	glm::mat4 transformation;
 	Texture* colorTexture;
+	glm::mat4 transformation;
 
 public:
 	vector<Vertex> vertices;
 	vector<Triangle> triangles;
 
 public:
-	static Texture *getDefaultTeture(VulkanServer *v);
-
-public:
-	Mesh(VisualServer* p_visualServer);
+	Mesh();
 	~Mesh();
 
 	// Return the size in bytes of vertices
@@ -107,13 +102,13 @@ public:
 		return triangles.size() * 3;
 	}
 
+	void setColorTexture(Texture* p_colorTexture);
+	const Texture* getColorTexture() const { return colorTexture; }
+
 	void setTransform(const glm::mat4 &p_transformation);
 	const glm::mat4& getTransform() const {
 		return transformation;
 	}
-
-	void setColorTexture(Texture* p_colorTexture);
-	const Texture* getColorTexture() const { return colorTexture; }
 };
 
 #endif // MESH_H
