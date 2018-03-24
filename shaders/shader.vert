@@ -12,11 +12,9 @@ layout(set = 1, binding=0) uniform MeshUniformBufferObject {
 } meshUBO;
 
 layout(location=0) in vec3 vertexPosition;
-layout(location=1) in vec4 vertexColor;
 layout(location=2) in vec2 inTextCoord;
 
-layout(location=0) out vec4 fragColor;
-layout(location=1) out vec2 textCoord;
+layout(location=0) out vec2 textCoord;
 
 out gl_PerVertex{
   vec4 gl_Position;
@@ -24,7 +22,5 @@ out gl_PerVertex{
 
 void main(){
   gl_Position = scene.cameraProjection * scene.cameraViewInverse * meshUBO.model * vec4(vertexPosition, 1.0);
-  //fragColor = vertexColor;
-  fragColor = vec4(inTextCoord, 0.0, 1.0);
   textCoord = inTextCoord;
 }

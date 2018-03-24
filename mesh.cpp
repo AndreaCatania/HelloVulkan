@@ -131,6 +131,7 @@ Texture* Mesh::getDefaultTeture(VulkanServer* v){
 Mesh::Mesh(VisualServer* p_visualServer)
 	: colorTexture( nullptr )
 {
+	// TODO Create this inside the VulkanServer and only when is added to the scene
 	meshHandle = unique_ptr<MeshHandle>(new MeshHandle(p_visualServer->getVulkanServer()));
 	meshHandle->mesh = this;
 	transformation = glm::mat4(1.f);

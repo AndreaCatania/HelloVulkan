@@ -4,8 +4,8 @@
 #include "mesh.h"
 #include "texture.h"
 
-#define CLOUDY_CUBES_TEST 0
-#define TEXTURE_TEST 1
+#define CLOUDY_CUBES_TEST 1
+#define TEXTURE_TEST 0
 
 void print(string c){
 	cout << c << endl;
@@ -37,33 +37,35 @@ private:
 Ticker ticker;
 VisualServer vm;
 
-void cubeMaker(Mesh &mesh){
-	mesh.vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f },{ 1.0f, 0.0f, 0.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f },{ 1.0f, 0.0f, 0.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f },{ 0.0f, 0.0f, 1.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ { -1.0f,  1.0f,  1.0f },{ 0.0f, 1.0f, 0.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ { -1.0f, -1.0f, -1.0f },{ 1.0f, 0.0f, 0.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ {  1.0f, -1.0f, -1.0f },{ 1.0f, 0.0f, 0.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ {  1.0f,  1.0f, -1.0f },{ 0.0f, 0.0f, 1.0f, 1.f } }));
-	mesh.vertices.push_back(Vertex({ { -1.0f,  1.0f, -1.0f },{ 0.0f, 0.0f, 1.0f, 1.f } }));
-	mesh.triangles.push_back(Triangle({0,1,2}));
-	mesh.triangles.push_back(Triangle({2,3,0}));
-	mesh.triangles.push_back(Triangle({1,5,6}));
-	mesh.triangles.push_back(Triangle({6,2,1}));
-	mesh.triangles.push_back(Triangle({7,6,5}));
-	mesh.triangles.push_back(Triangle({5,4,7}));
-	mesh.triangles.push_back(Triangle({4,0,3}));
-	mesh.triangles.push_back(Triangle({3,7,4}));
-	mesh.triangles.push_back(Triangle({4,5,1}));
-	mesh.triangles.push_back(Triangle({1,0,4}));
-	mesh.triangles.push_back(Triangle({3,2,6}));
-	mesh.triangles.push_back(Triangle({6,7,3}));
+void cubeMaker(Mesh *mesh){
+
+	mesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f },{ 0.0f, 1.0f } }));
+	mesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f },{ 1.0f, 0.0f } }));
+	mesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f },{ 1.0f, 1.0f } }));
+	mesh->vertices.push_back(Vertex({ { -1.0f,  1.0f,  1.0f },{ 0.0f, 0.0f } }));
+	mesh->vertices.push_back(Vertex({ { -1.0f, -1.0f, -1.0f },{ 0.0f, 1.0f } }));
+	mesh->vertices.push_back(Vertex({ {  1.0f, -1.0f, -1.0f },{ 1.0f, 1.0f } }));
+	mesh->vertices.push_back(Vertex({ {  1.0f,  1.0f, -1.0f },{ 1.0f, 0.0f } }));
+	mesh->vertices.push_back(Vertex({ { -1.0f,  1.0f, -1.0f },{ 0.0f, 0.0f } }));
+	mesh->triangles.push_back(Triangle({0,1,2}));
+	mesh->triangles.push_back(Triangle({2,3,0}));
+	mesh->triangles.push_back(Triangle({1,5,6}));
+	mesh->triangles.push_back(Triangle({6,2,1}));
+	mesh->triangles.push_back(Triangle({7,6,5}));
+	mesh->triangles.push_back(Triangle({5,4,7}));
+	mesh->triangles.push_back(Triangle({4,0,3}));
+	mesh->triangles.push_back(Triangle({3,7,4}));
+	mesh->triangles.push_back(Triangle({4,5,1}));
+	mesh->triangles.push_back(Triangle({1,0,4}));
+	mesh->triangles.push_back(Triangle({3,2,6}));
+	mesh->triangles.push_back(Triangle({6,7,3}));
 }
 
 glm::mat4 cameraBoom;
 #if CLOUDY_CUBES_TEST
 float cameraBoomLenght = 20;
 vector<Mesh*> meshes;
+Texture* texture;
 #endif
 
 #if TEXTURE_TEST
@@ -85,13 +87,18 @@ void ready(){
 	cam.setTransform( cameraBoom * camTransform );
 
 #if CLOUDY_CUBES_TEST
+
+	texture = new Texture(&vm);
+	texture->load("assets/TestText.jpg");
+
 	meshes.resize(50);
 	float ballRadius = 20.;
 
 	// Create cubes
 	for(int i = meshes.size()-1; 0<=i; --i){
-		meshes[i] = new Mesh;
-		cubeMaker(*meshes[i]);
+		meshes[i] = new Mesh(&vm);
+		meshes[i]->setColorTexture(texture);
+		cubeMaker(meshes[i]);
 		meshes[i]->setTransform( glm::translate(glm::mat4(1.), glm::ballRand(ballRadius)) );
 		vm.addMesh(meshes[i]);
 	}
@@ -103,9 +110,9 @@ void ready(){
 	texture->load("assets/TestText.jpg");
 
 	triangleMesh = new Mesh(&vm);
-	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f }, {0., 1.} }));
-	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, { 1.0f, 0.0f, 0.0f, 1.f }, {1., 0.} }));
-	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, { 0.0f, 0.0f, 1.0f, 1.f }, {1., 1.} }));
+	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f,  1.0f }, {0., 1.} }));
+	triangleMesh->vertices.push_back(Vertex({ {  1.0f, -1.0f,  1.0f }, {1., 0.} }));
+	triangleMesh->vertices.push_back(Vertex({ {  1.0f,  1.0f,  1.0f }, {1., 1.} }));
 	triangleMesh->triangles.push_back(Triangle({0,1,2}));
 	triangleMesh->setColorTexture(texture);
 	vm.addMesh(triangleMesh);

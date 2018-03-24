@@ -9,10 +9,8 @@ class Mesh;
 class Texture;
 
 // This struct is used to know handle the memory of mesh
-struct MeshHandle{
-
-	MeshHandle(VulkanServer *p_vulkanServer);
-	~MeshHandle();
+class MeshHandle{
+public:
 
 	VulkanServer* vulkanServer;
 	const Mesh *mesh;
@@ -33,6 +31,9 @@ struct MeshHandle{
 
 	VkDescriptorSet imageDescriptorSet;
 
+	MeshHandle(VulkanServer *p_vulkanServer);
+	~MeshHandle();
+
 	void clear();
 	bool prepare();
 	bool allocateImagesDescriptorSet();
@@ -41,7 +42,6 @@ struct MeshHandle{
 
 struct Vertex{
 	glm::vec3 pos;
-	glm::vec4 color; // TODO remove it, it's useless
 	glm::vec2 textCoord; // UV
 
 	static VkVertexInputBindingDescription getBindingDescription(){
@@ -52,22 +52,17 @@ struct Vertex{
 		return desc;
 	}
 
-	static array<VkVertexInputAttributeDescription, 3> getAttributesDescription(){
-		array<VkVertexInputAttributeDescription, 3> attr;
+	static array<VkVertexInputAttributeDescription, 2> getAttributesDescription(){
+		array<VkVertexInputAttributeDescription, 2> attr;
 		attr[0].binding = 0;
 		attr[0].location = 0;
 		attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
 		attr[0].offset = offsetof(Vertex, pos);
 
 		attr[1].binding = 0;
-		attr[1].location = 1;
-		attr[1].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-		attr[1].offset = offsetof(Vertex, color);
-
-		attr[2].binding = 0;
-		attr[2].location = 2;
-		attr[2].format = VK_FORMAT_R32G32_SFLOAT;
-		attr[2].offset = offsetof(Vertex, textCoord);
+		attr[1].location = 2;
+		attr[1].format = VK_FORMAT_R32G32_SFLOAT;
+		attr[1].offset = offsetof(Vertex, textCoord);
 
 		return attr;
 	}

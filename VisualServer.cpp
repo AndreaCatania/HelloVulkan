@@ -1206,7 +1206,7 @@ bool VulkanServer::createGraphicsPipelines(){
 	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
 	vertexInputCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
 
-	array<VkVertexInputAttributeDescription, 3> vertexInputAttributesDescription = Vertex::getAttributesDescription();
+	array<VkVertexInputAttributeDescription, 2> vertexInputAttributesDescription = Vertex::getAttributesDescription();
 
 	vertexInputCreateInfo.vertexAttributeDescriptionCount = vertexInputAttributesDescription.size();
 	vertexInputCreateInfo.pVertexAttributeDescriptions = vertexInputAttributesDescription.data();
