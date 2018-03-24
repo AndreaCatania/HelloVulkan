@@ -5,6 +5,7 @@
 
 class VulkanServer;
 class Mesh;
+class Texture;
 
 // This struct is used to know handle the memory of mesh
 struct MeshHandle{
@@ -59,6 +60,7 @@ class Mesh{
 	friend class VulkanServer;
 	unique_ptr<MeshHandle> meshHandle;
 	glm::mat4 transformation;
+	Texture* colorTexture;
 
 public:
 	vector<Vertex> vertices;
@@ -86,6 +88,9 @@ public:
 	const glm::mat4& getTransform() const {
 		return transformation;
 	}
+
+	void setColorTexture(Texture* p_colorTexture);
+	const Texture* getColorTexture() const { return colorTexture; }
 };
 
 #endif // MESH_H

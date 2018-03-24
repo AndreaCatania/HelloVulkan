@@ -12,6 +12,7 @@
 #include "libs/glm/glm.hpp"
 #include "libs/glm/gtc/matrix_transform.hpp"
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,5 +20,9 @@
 #include <cstring>
 
 using namespace std;
+
+// Defined in main
+void print(string c);
+void print(const char * c);
 
 #endif // HELLOVULKAN_H

@@ -1,8 +1,16 @@
 ﻿
 #include "VisualServer.h"
-#include <iostream>
 #include "libs/glm/gtc/random.hpp"
 #include "mesh.h"
+#include "texture.h"
+
+void print(string c){
+	cout << c << endl;
+}
+
+void print(const char * c){
+	cout << c << endl;
+}
 
 class Ticker{
 
@@ -50,18 +58,21 @@ void cubeMaker(Mesh &mesh){
 }
 
 vector<Mesh*> meshes;
+Texture* texture;
 glm::mat4 cameraBoom;
 float cameraBoomLenght = 20;
 
 void ready(){
 
 	// Update camera view
-	vm.getVulkanServer().getCamera().setNearFar(0.1, 100.);
+	vm.getVulkanServer()->getCamera().setNearFar(0.1, 100.);
 
 	cameraBoom = glm::mat4(1.);
 
-	meshes.resize(50);
+	texture = new Texture(&vm);
+	texture->load("assets/TestText.jpg");
 
+	meshes.resize(50);
 	float ballRadius = 20.;
 
 	// Create cubes
@@ -77,12 +88,15 @@ void exit(){
 	for(int i = meshes.size()-1; 0<=i; --i){
 		delete meshes[i];
 	}
+
+	delete texture;
+	texture = nullptr;
 }
 
 void tick(float deltaTime){
-	cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
+	//cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
 
-	Camera& cam = vm.getVulkanServer().getCamera();
+	Camera& cam = vm.getVulkanServer()->getCamera();
 	glm::mat4 camTransform( glm::translate( glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght) ) );
 	cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(20.f), glm::vec3(0,1,0));
 	cam.setTransform( cameraBoom * camTransform );

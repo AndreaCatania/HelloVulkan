@@ -5,6 +5,7 @@
 #include "libs/vma/vk_mem_alloc.h"
 
 #include "mesh.h"
+#include "texture.h"
 
 #include <iostream>
 #include <fstream>
@@ -19,14 +20,6 @@
 // X+ Right
 // Z+ Backward
 const glm::mat4 VulkanServer::COORDSYSTEMROTATOR = glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0.f, 0.f, 1.f));
-
-void print(string c){
-	cout << c << endl;
-}
-
-void print(const char * c){
-	cout << c << endl;
-}
 
 bool readFile(const string &filename, vector<char> &r_out){
 	// Read the file from the bottom in binary
@@ -206,7 +199,10 @@ bool VulkanServer::create(GLFWwindow* p_window){
 	if( !createUniformPools() )
 		return false;
 
-	if( !allocateAndConfigureDescriptorSet() )
+	if( !allocateConfigureCameraDescriptorSet() )
+		return false;
+
+	if( !allocateConfigureMeshesDescriptorSet() )
 		return false;
 
 	if( !allocateCommandBuffers() )
@@ -438,6 +434,36 @@ void VulkanServer::updateUniformBuffers(){
 	vmaUnmapMemory(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBufferAllocation);
 }
 
+bool VulkanServer::createImageLoadBuffer(VkDeviceSize p_size, VkBuffer &r_buffer, VmaAllocation &r_allocation, VmaAllocator &r_allocator){
+
+	r_allocator = bufferMemoryHostAllocator;
+	return createBuffer(bufferMemoryHostAllocator,
+				 p_size,
+				 VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				 VK_SHARING_MODE_EXCLUSIVE,
+				 VMA_MEMORY_USAGE_CPU_TO_GPU,
+				 r_buffer,
+				 r_allocation );
+}
+
+bool VulkanServer::createImageTexture(uint32_t p_width, uint32_t p_height, VkImage &r_image, VkDeviceMemory &r_memory ){
+	return createImage(p_width,
+					   p_height,
+					   VK_FORMAT_R8G8B8A8_UNORM,
+					   VK_IMAGE_TILING_OPTIMAL,
+					   VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					   r_image,
+					   r_memory);
+}
+
+bool VulkanServer::createImageViewTexture(VkImage p_image, VkImageView &r_imageView){
+	return createImageView(p_image,
+						   VK_FORMAT_R8G8B8A8_UNORM,
+						   VK_IMAGE_ASPECT_COLOR_BIT,
+						   r_imageView);
+}
+
 bool VulkanServer::createInstance(){
 
 	print("Instancing Vulkan");
@@ -623,6 +649,7 @@ bool VulkanServer::createLogicalDevice(){
 	}
 
 	VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+	physicalDeviceFeatures.samplerAnisotropy = VK_TRUE;
 
 	VkDeviceCreateInfo deviceCreateInfos = {};
 	deviceCreateInfos.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -1033,6 +1060,7 @@ void VulkanServer::destroyRenderPass(){
 
 bool VulkanServer::createDescriptorSetLayouts(){
 
+	// Camera uniform buffer set layout
 	VkDescriptorSetLayoutBinding cameraDescriptorBinding = {};
 	cameraDescriptorBinding.binding = 0;
 	cameraDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -1051,20 +1079,31 @@ bool VulkanServer::createDescriptorSetLayouts(){
 		return false;
 	}
 
+	// Mesh dynamic uniform buffer
 	VkDescriptorSetLayoutBinding meshesDescriptorBinding = {};
 	meshesDescriptorBinding.binding = 0;
 	meshesDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	meshesDescriptorBinding.descriptorCount = 1;
 	meshesDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	layoutCreateInfo.bindingCount = 1;
-	layoutCreateInfo.pBindings = &meshesDescriptorBinding;
+	// Image + Sampler image set layout
+	VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
+	samplerLayoutBinding.binding = 1;
+	samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerLayoutBinding.descriptorCount = 1;
+	samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	VkDescriptorSetLayoutBinding meshesBindings[] = {meshesDescriptorBinding, samplerLayoutBinding};
+	layoutCreateInfo.bindingCount = 2;
+	layoutCreateInfo.pBindings = meshesBindings;
 
 	res = vkCreateDescriptorSetLayout(device, &layoutCreateInfo, nullptr, &meshesDescriptorSetLayout );
 	if(VK_SUCCESS != res){
 		print("[ERROR] Error during creation of meshes descriptor layout");
 		return false;
 	}
+
+
 
 	print("[INFO] Uniform descriptor layouts created");
 	return true;
@@ -1225,7 +1264,7 @@ bool VulkanServer::createGraphicsPipelines(){
 	colorBlendCreateInfo.attachmentCount = 1;
 	colorBlendCreateInfo.pAttachments = &colorBlendAttachment;
 
-/// Pipeline layout (used to specify uniform variables)
+/// Pipeline layout (used to specify uniform data)
 	{
 		VkDescriptorSetLayout layouts[] = {cameraDescriptorSetLayout, meshesDescriptorSetLayout};
 		VkPipelineLayoutCreateInfo layoutCreateInfo = {};
@@ -1470,30 +1509,44 @@ void VulkanServer::destroyUniformBuffers(){
 
 bool VulkanServer::createUniformPools(){
 
-	VkDescriptorPoolSize poolSize = {};
-	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSize.descriptorCount = 1;
+	{ // Camera uniform buffer pool
+		VkDescriptorPoolSize poolSize = {};
+		poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		poolSize.descriptorCount = 1;
 
-	VkDescriptorPoolCreateInfo poolCreateInfo = {};
-	poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolCreateInfo.poolSizeCount = 1;
-	poolCreateInfo.pPoolSizes = &poolSize;
-	poolCreateInfo.maxSets = 1;
+		VkDescriptorPoolCreateInfo poolCreateInfo = {};
+		poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolCreateInfo.poolSizeCount = 1;
+		poolCreateInfo.pPoolSizes = &poolSize;
+		poolCreateInfo.maxSets = 1;
 
-	VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &cameraDescriptorPool);
-	if(res!=VK_SUCCESS){
-		print("[ERROR] Error during creation of camera descriptor pool");
+		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &cameraDescriptorPool);
+		if(res!=VK_SUCCESS){
+			print("[ERROR] Error during creation of camera descriptor pool");
+			return false;
+		}
 	}
 
-	poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	poolSize.descriptorCount = 1;
+	{ // Per Mesh uniform buffer pool
+		VkDescriptorPoolSize poolSizes[] = {{}, {}};
+		// Mesh dynamic buffer uniform
+		poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		poolSizes[0].descriptorCount = 1;
+		// Image and sampler uniform
+		poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		poolSizes[1].descriptorCount = 1;
 
-	poolCreateInfo.poolSizeCount = 1;
-	poolCreateInfo.maxSets = 1;
+		VkDescriptorPoolCreateInfo poolCreateInfo = {};
+		poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolCreateInfo.poolSizeCount = 2;
+		poolCreateInfo.pPoolSizes = poolSizes;
+		poolCreateInfo.maxSets = 1;
 
-	res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &meshesDescriptorPool);
-	if(res!=VK_SUCCESS){
-		print("[ERROR] Error during creation of meshes descriptor pool");
+		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &meshesDescriptorPool);
+		if(res!=VK_SUCCESS){
+			print("[ERROR] Error during creation of meshes descriptor pool");
+			return false;
+		}
 	}
 
 	print("[INFO] Uniform pools created");
@@ -1514,7 +1567,7 @@ void VulkanServer::destroyUniformPools(){
 	}
 }
 
-bool VulkanServer::allocateAndConfigureDescriptorSet(){
+bool VulkanServer::allocateConfigureCameraDescriptorSet(){
 
 	// Define the structure of camera uniform buffer
 	VkDescriptorSetAllocateInfo allocationInfo = {};
@@ -1529,6 +1582,7 @@ bool VulkanServer::allocateAndConfigureDescriptorSet(){
 		return false;
 	}
 
+	// Update descriptor allocated with buffer
 	VkDescriptorBufferInfo cameraBufferInfo = {};
 	cameraBufferInfo.buffer = sceneUniformBuffer;
 	cameraBufferInfo.offset = 0;
@@ -1545,18 +1599,26 @@ bool VulkanServer::allocateAndConfigureDescriptorSet(){
 
 	vkUpdateDescriptorSets(device, 1, &cameraWriteDescriptor, 0, nullptr);
 
-	// Define the structure of meshes uniform buffer
+	print("[INFO] camera descriptor set created");
+	return true;
+}
+
+bool VulkanServer::allocateConfigureMeshesDescriptorSet(){
+
+	// Allocate dynamic buffer of meshes
+	VkDescriptorSetAllocateInfo allocationInfo = {};
 	allocationInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocationInfo.descriptorPool = meshesDescriptorPool;
 	allocationInfo.descriptorSetCount = 1;
 	allocationInfo.pSetLayouts = &meshesDescriptorSetLayout;
 
-	res = vkAllocateDescriptorSets(device, &allocationInfo, &meshesDescriptorSet);
+	VkResult res = vkAllocateDescriptorSets(device, &allocationInfo, &meshesDescriptorSet);
 	if(res!=VK_SUCCESS){
 		print("[ERROR] Allocation of descriptor set failed");
 		return false;
 	}
 
+	// Update the descriptor with dynamic buffer
 	VkDescriptorBufferInfo meshBufferInfo = {};
 	meshBufferInfo.buffer = meshUniformBufferData.meshUniformBuffer;
 	meshBufferInfo.offset = 0;
@@ -1576,6 +1638,8 @@ bool VulkanServer::allocateAndConfigureDescriptorSet(){
 	print("[INFO] Descriptor set created");
 	return true;
 }
+
+bool allocateAndConfigureDescriptorSet();
 
 bool VulkanServer::createCommandPool(){
 	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
@@ -1665,17 +1729,23 @@ void VulkanServer::beginCommandBuffers(){
 		vkCmdBindPipeline(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
 		if(meshes.size()>0){
-			VkDescriptorSet descriptorsSets[] = {cameraDescriptorSet, VK_NULL_HANDLE};
+			// 0 camera, 1 mesh, 2 texture
+			VkDescriptorSet descriptorSets[] = {cameraDescriptorSet, VK_NULL_HANDLE, VK_NULL_HANDLE};
 			// Bind buffers
 			for(int m = 0, s = meshes.size(); m<s; ++m){
+				MeshHandle* mh = meshes[m];
+				descriptorSets[1] = meshesDescriptorSet; // TODOD set here the right descriptor set
+				if(mh->mesh->getColorTexture() && mh->mesh->getColorTexture()->isReady()){
+					descriptorSets[2] = mh->mesh->getColorTexture()->getDescriptorSet();
+				}else{
+					descriptorSets[2] = VK_NULL_HANDLE;
+				}
+				uint32_t dynamicOffset = mh->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
 
-				descriptorsSets[1] = meshesDescriptorSet; // TODOD set here the right descriptor set
-				uint32_t dynamicOffset = meshes[m]->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
-
-				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptorsSets, 1, &dynamicOffset);
-				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &meshes[m]->vertexBuffer, &meshes[m]->verticesBufferOffset);
-				vkCmdBindIndexBuffer(drawCommandBuffers[i], meshes[m]->indexBuffer, meshes[m]->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
-				vkCmdDrawIndexed(drawCommandBuffers[i], meshes[m]->mesh->getCountIndices(), 1, 0, 0, 0);
+				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 2, descriptorSets, 1, &dynamicOffset);
+				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &mh->vertexBuffer, &mh->verticesBufferOffset);
+				vkCmdBindIndexBuffer(drawCommandBuffers[i], mh->indexBuffer, mh->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(drawCommandBuffers[i], mh->mesh->getCountIndices(), 1, 0, 0, 0);
 			}
 		}
 
@@ -1862,7 +1932,7 @@ int VulkanServer::autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_dev
 		if( r_deviceProps->deviceType != p_deviceType)
 			continue;
 
-		if( !deviceFeatures.geometryShader )
+		if( !deviceFeatures.geometryShader || !deviceFeatures.samplerAnisotropy )
 			continue;
 
 		if( !findQueueFamilies(p_devices[i]).isComplete() )
@@ -1891,7 +1961,7 @@ void VulkanServer::recreateSwapchain(){
 	reloadDrawCommandBuffer = true;
 }
 
-bool VulkanServer::createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation){
+bool VulkanServer::createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkBufferUsageFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation){
 
 	VkBufferCreateInfo bufferCreateInfo = {};
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -1954,7 +2024,7 @@ bool VulkanServer::chooseBestSupportedFormat(const vector<VkFormat> &p_formats, 
 	return false;
 }
 
-bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height, VkFormat &p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &p_image, VkDeviceMemory &p_memory){
+bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height, VkFormat p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &r_image, VkDeviceMemory &r_memory){
 	VkImageCreateInfo imageCreateInfo = {};
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -1970,24 +2040,23 @@ bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height, VkFormat &p_
 	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	if(VK_SUCCESS!=vkCreateImage(device, &imageCreateInfo, nullptr, &p_image)){
+	if(VK_SUCCESS!=vkCreateImage(device, &imageCreateInfo, nullptr, &r_image)){
 		return false;
 	}
 
 	VkMemoryRequirements memoryRequirements;
-	vkGetImageMemoryRequirements(device, p_image, &memoryRequirements);
+	vkGetImageMemoryRequirements(device, r_image, &memoryRequirements);
 
 	VkMemoryAllocateInfo memoryAllocInfo = {};
 	memoryAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	memoryAllocInfo.allocationSize = memoryRequirements.size;
 	memoryAllocInfo.memoryTypeIndex = chooseMemoryType(memoryRequirements.memoryTypeBits, p_memoryFlags);
 
-	if( VK_SUCCESS != vkAllocateMemory(device, &memoryAllocInfo, nullptr, &p_memory)){
+	if( VK_SUCCESS != vkAllocateMemory(device, &memoryAllocInfo, nullptr, &r_memory)){
 		return false;
 	}
 
-	vkBindImageMemory(device, p_image, p_memory, /*Offset*/0);
-
+	vkBindImageMemory(device, r_image, r_memory, /*Offset*/0);
 	return true;
 }
 
@@ -2200,8 +2269,7 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format, VkI
 }
 
 VisualServer::VisualServer()
-	: window(nullptr) {
-}
+	: window(nullptr) {}
 
 VisualServer::~VisualServer(){
 

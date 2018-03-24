@@ -6,6 +6,7 @@
 class GLFWwindow;
 class Mesh;
 struct MeshHandle;
+class Texture;
 
 // RENDER IMAGE PROCESS
 // |
@@ -54,7 +55,7 @@ struct MeshHandle;
 //		The Layout of image tell the GPU how to store it in order to obtain the max performance for a particular operation, The layout of image can be changed or better to say transitioned
 //		The transition can be performed using a barrier where the transition is specified in the VkImageMemoryBarrier structure
 //
-// VULKAN COORDINATE SYSTEM
+//	VULKAN COORDINATE SYSTEM
 //		is right hand with positive Y that go down
 //		The depth = 1 is Z positive (far is positive)
 //
@@ -64,7 +65,12 @@ struct MeshHandle;
 //        |
 //       +Y
 //
-//
+//	UNIFORM BUFFERS and IMAGES
+//		Uniform buffer is the way how to submit resources / data to the shaders.
+//		The image can be submitted in the same way of Uniform buffer, but it's special object that is used specifically for textures.
+//		The uniform buffer / image should be declared in the pipeline by useing set layout that is a description of it.
+//		Then is required to create a pool that is used to allocate descriptor set that is the object that refer to a particular resource
+//		it's possible to change the resource by using vkUpdateDescriptorSets
 
 struct SceneUniformBufferObject{
 	glm::mat4 cameraView;
@@ -107,6 +113,7 @@ public:
 
 class VulkanServer{
 public:
+	friend class Texture;
 
 	static const glm::mat4 COORDSYSTEMROTATOR;
 
@@ -151,6 +158,10 @@ public:
 public:
 	void processCopy();
 	void updateUniformBuffers();
+
+	bool createImageLoadBuffer(VkDeviceSize p_size, VkBuffer &r_buffer, VmaAllocation &r_allocation, VmaAllocator &r_allocator);
+	bool createImageTexture(uint32_t p_width, uint32_t p_height, VkImage &r_image, VkDeviceMemory &r_memory );
+	bool createImageViewTexture(VkImage p_image, VkImageView &r_imageView);
 
 private:
 	GLFWwindow* window;
@@ -324,7 +335,8 @@ private:
 	bool createUniformPools();
 	void destroyUniformPools();
 
-	bool allocateAndConfigureDescriptorSet();
+	bool allocateConfigureCameraDescriptorSet();
+	bool allocateConfigureMeshesDescriptorSet();
 
 	// The command pool is an opaque object that is used to allocate command buffers easily
 	bool createCommandPool();
@@ -356,10 +368,11 @@ private:
 	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device, VkPhysicalDeviceProperties *r_deviceProps);
 
 private:
+	// Helpers
 	void recreateSwapchain();
 
 	// return the size of allocated memory, or 0 if error.
-	bool createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkMemoryPropertyFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation);
+	bool createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkBufferUsageFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation);
 	void destroyBuffer(VmaAllocator p_allocator, VkBuffer &r_buffer, VmaAllocation &r_allocation);
 
 	bool hasStencilComponent(VkFormat p_format);
@@ -369,7 +382,7 @@ private:
 	// and return one of it if it's supported by the Hardware
 	bool chooseBestSupportedFormat(const vector<VkFormat> &p_formats, VkImageTiling p_tiling, VkFormatFeatureFlags p_features, VkFormat *r_format);
 
-	bool createImage(uint32_t p_width, uint32_t p_height, VkFormat &p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &p_image, VkDeviceMemory &p_memory);
+	bool createImage(uint32_t p_width, uint32_t p_height, VkFormat p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &r_image, VkDeviceMemory &r_memory);
 	void destroyImage(VkImage &p_image, VkDeviceMemory &p_memory);
 
 	bool createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, VkImageView &r_imageView);
@@ -404,7 +417,7 @@ public:
 
 	void addMesh(const Mesh *p_mesh);
 
-	VulkanServer& getVulkanServer(){return vulkanServer;}
+	VulkanServer* getVulkanServer(){return &vulkanServer;}
 
 private:
 	VulkanServer vulkanServer;
