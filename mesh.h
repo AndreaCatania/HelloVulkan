@@ -1,7 +1,8 @@
-﻿#ifndef MESH_H
+#ifndef MESH_H
 #define MESH_H
 
 #include "hellovulkan.h"
+#include "libs/tiny_obj_loader/tiny_obj_loader.h"
 
 class VisualServer;
 class VulkanServer;
@@ -68,7 +69,7 @@ struct Vertex{
 };
 
 struct Triangle{
-	uint32_t vertices[3];
+	uint32_t indices[3];
 };
 
 class Mesh{
@@ -109,6 +110,11 @@ public:
 	const glm::mat4& getTransform() const {
 		return transformation;
 	}
+
+	int addUniqueTriangle(int p_lastIndex, const Vertex p_vertices[3]);
+
+	// Load new vertices from OBJ file
+	bool loadObj(const string &p_path);
 };
 
 #endif // MESH_H

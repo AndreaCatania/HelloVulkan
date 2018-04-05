@@ -1,8 +1,11 @@
-﻿#include "mesh.h"
+#include "mesh.h"
 
 #include "hellovulkan.h"
 #include "VisualServer.h"
 #include "texture.h"
+
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "libs/tiny_obj_loader/tiny_obj_loader.h"
 
 MeshHandle::MeshHandle(Mesh* p_mesh, VulkanServer* p_vulkanServer)
 	: mesh(p_mesh),
@@ -133,4 +136,73 @@ void Mesh::setTransform(const glm::mat4 &p_transformation){
 	if(meshHandle)
 		meshHandle->hasTransformationChange = true;
 }
+
+int Mesh::addUniqueTriangle(int p_lastIndex, const Vertex p_vertices[3]){
+	vertices.push_back(p_vertices[0]);
+	vertices.push_back(p_vertices[1]);
+	vertices.push_back(p_vertices[2]);
+
+	triangles.push_back(Triangle({++p_lastIndex, ++p_lastIndex, ++p_lastIndex}));
+	return p_lastIndex;
+}
+
+// Utility loadObj
+void set_vertex_position(Vertex& r_vertex, tinyobj::index_t& p_index, tinyobj::attrib_t p_attributes){
+	r_vertex.pos = {
+		p_attributes.vertices[(p_index.vertex_index*3)+0],
+		p_attributes.vertices[(p_index.vertex_index*3)+1],
+		p_attributes.vertices[(p_index.vertex_index*3)+2]};
+}
+
+// Utility loadObj
+void set_vertex_uv(Vertex& r_vertex, tinyobj::index_t& p_index, tinyobj::attrib_t p_attributes){
+	if( -1<p_index.texcoord_index ){
+		r_vertex.textCoord = {p_attributes.texcoords[(p_index.texcoord_index*2)+0], p_attributes.texcoords[(p_index.texcoord_index*2)+1]};
+	}else{
+		r_vertex.textCoord = {0, 0};
+	}
+}
+
+bool Mesh::loadObj(const string &p_path){
+	tinyobj::attrib_t attrib;
+	vector<tinyobj::shape_t> shapes;
+	vector<tinyobj::material_t> materials;
+	string err;
+
+	if( !tinyobj::LoadObj(&attrib, &shapes, &materials, &err, p_path.c_str()) ){
+		print(string("[ERROR] Model loading failed: ") + err);
+		return false;
+	}
+
+	int lastIndex = -1;
+	for(int i = shapes.size() -1; 0<=i; --i){ // Each shape
+
+		vector<tinyobj::index_t> &lIndices = shapes[i].mesh.indices; // Contains index of UV, vertex position, normal
+		const size_t indexCount(lIndices.size());
+
+		for( int j = 0; j<indexCount; j += 3){ // Each triangle of shape
+
+			int vertexId = j+0;
+			Vertex vert[3];
+
+			set_vertex_position(vert[0], lIndices[vertexId], attrib);
+			set_vertex_uv(vert[0], lIndices[vertexId], attrib);
+
+			++vertexId;
+			set_vertex_position(vert[1], lIndices[vertexId], attrib);
+			set_vertex_uv(vert[1], lIndices[vertexId], attrib);
+
+			++vertexId;
+			set_vertex_position(vert[2], lIndices[vertexId], attrib);
+			set_vertex_uv(vert[2], lIndices[vertexId], attrib);
+
+			lastIndex = addUniqueTriangle(lastIndex, vert);
+		}
+	}
+
+	return true;
+}
+
+
+
 

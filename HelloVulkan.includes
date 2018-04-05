@@ -14,3 +14,4 @@ libs/glm
 shaders
 libs/vma
 libs/stb
+libs/tiny_obj_loader

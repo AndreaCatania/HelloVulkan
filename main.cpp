@@ -1,11 +1,12 @@
-﻿
+
 #include "VisualServer.h"
 #include "libs/glm/gtc/random.hpp"
 #include "mesh.h"
 #include "texture.h"
 
-#define CLOUDY_CUBES_TEST 1
+#define CLOUDY_CUBES_TEST 0
 #define TEXTURE_TEST 0
+#define LOAD_TEST 1
 
 void print(string c){
 	cout << c << endl;
@@ -74,6 +75,11 @@ Mesh* triangleMesh;
 Texture* texture;
 #endif
 
+#if LOAD_TEST
+float cameraBoomLenght = 5;
+Mesh* mesh;
+Texture* texture;
+#endif
 
 void ready(){
 
@@ -118,6 +124,16 @@ void ready(){
 	vm.addMesh(triangleMesh);
 
 #endif
+
+#if LOAD_TEST
+	texture = new Texture(&vm);
+	texture->load("assets/TestText.jpg");
+
+	mesh = new Mesh;
+	mesh->loadObj("assets/quad.obj");
+	mesh->setColorTexture(texture);
+	vm.addMesh(mesh);
+#endif
 }
 
 void exit(){
@@ -137,6 +153,16 @@ void exit(){
 	delete texture;
 	texture = nullptr;
 #endif
+
+#if LOAD_TEST
+	vm.removeMesh(mesh);
+
+	delete mesh;
+	mesh = nullptr;
+
+	delete texture;
+	texture = nullptr;
+#endif
 }
 
 void tick(float deltaTime){
@@ -152,6 +178,13 @@ void tick(float deltaTime){
 	for(int i = meshes.size()-1; 0<=i; --i){
 		meshes[i]->setTransform(glm::rotate(meshes[i]->getTransform(), deltaTime * glm::radians(90.0f), glm::vec3(1.0f, .0f, .0f)));
 	}
+#endif
+
+#if LOAD_TEST
+	Camera& cam = vm.getVulkanServer()->getCamera();
+	glm::mat4 camTransform( glm::translate( glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght) ) );
+	cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(20.f), glm::vec3(0,1,0));
+	cam.setTransform( cameraBoom * camTransform );
 #endif
 }
 

@@ -146,6 +146,7 @@ libs/glm/vec3.hpp
 libs/glm/vec4.hpp
 libs/glm/vector_relational.hpp
 libs/stb/stb_image.h
+libs/tiny_obj_loader/tiny_obj_loader.h
 libs/vma/vk_mem_alloc.h
 mesh.cpp
 mesh.h

@@ -1209,12 +1209,10 @@ bool VulkanServer::createGraphicsPipelines(){
 	vertexInputCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 
 	VkVertexInputBindingDescription vertexInputBindingDescription = Vertex::getBindingDescription();
-
 	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
 	vertexInputCreateInfo.pVertexBindingDescriptions = &vertexInputBindingDescription;
 
 	array<VkVertexInputAttributeDescription, 2> vertexInputAttributesDescription = Vertex::getAttributesDescription();
-
 	vertexInputCreateInfo.vertexAttributeDescriptionCount = vertexInputAttributesDescription.size();
 	vertexInputCreateInfo.pVertexAttributeDescriptions = vertexInputAttributesDescription.data();
 
