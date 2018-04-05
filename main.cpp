@@ -127,10 +127,10 @@ void ready(){
 
 #if LOAD_TEST
 	texture = new Texture(&vm);
-	texture->load("assets/TestText.jpg");
+	texture->load("assets/deagle/ESe_Material__106_color.png");
 
 	mesh = new Mesh;
-	mesh->loadObj("assets/quad.obj");
+	mesh->loadObj("assets/deagle/ESe.obj");
 	mesh->setColorTexture(texture);
 	vm.addMesh(mesh);
 #endif

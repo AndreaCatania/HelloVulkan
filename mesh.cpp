@@ -157,7 +157,10 @@ void set_vertex_position(Vertex& r_vertex, tinyobj::index_t& p_index, tinyobj::a
 // Utility loadObj
 void set_vertex_uv(Vertex& r_vertex, tinyobj::index_t& p_index, tinyobj::attrib_t p_attributes){
 	if( -1<p_index.texcoord_index ){
-		r_vertex.textCoord = {p_attributes.texcoords[(p_index.texcoord_index*2)+0], p_attributes.texcoords[(p_index.texcoord_index*2)+1]};
+		// Since vulkan texture coords start from  top left corner and obj format start from bottom left
+		// I need invert it using "1. - p_attributes.texcoords[(p_index.texcoord_index*2)+1]" to make it correct
+		r_vertex.textCoord = {p_attributes.texcoords[(p_index.texcoord_index*2)+0],
+							  1. - p_attributes.texcoords[(p_index.texcoord_index*2)+1]};
 	}else{
 		r_vertex.textCoord = {0, 0};
 	}
