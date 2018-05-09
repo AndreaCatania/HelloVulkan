@@ -18,6 +18,7 @@ shaders/bin/*
 *.lo
 *.o
 *.obj
+!assets/*
 
 # Precompiled Headers
 *.gch
