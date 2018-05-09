@@ -1,8 +1,11 @@
-﻿#ifndef HELLOVULKAN_H
+#ifndef HELLOVULKAN_H
 #define HELLOVULKAN_H
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+//#define GLFW_INCLUDE_VULKAN
+//#include "GLFW/glfw3.h"
+
+#define SDL_MAIN_HANDLED
+#include "SDL/SDL.h"
 
 #include "libs/vma/vk_mem_alloc.h" // Includes only interfaces
 
@@ -12,17 +15,17 @@
 #include "libs/glm/glm.hpp"
 #include "libs/glm/gtc/matrix_transform.hpp"
 
+#include <array>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
-#include <array>
-#include <cstring>
 
 using namespace std;
 
 // Defined in main
 void print(string c);
-void print(const char * c);
+void print(const char *c);
 
 #endif // HELLOVULKAN_H
