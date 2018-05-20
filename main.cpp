@@ -4,9 +4,9 @@
 #include "mesh.h"
 #include "texture.h"
 
-#define CLOUDY_CUBES_TEST 0
+#define CLOUDY_CUBES_TEST 1
 #define TEXTURE_TEST 0
-#define LOAD_TEST 1
+#define LOAD_TEST 0
 
 void print(string c) {
 	cout << c << endl;
@@ -79,6 +79,8 @@ Texture *texture;
 float cameraBoomLenght = 5;
 Mesh *mesh;
 Texture *texture;
+Mesh *planeMesh;
+Texture *planeTexture;
 #endif
 
 void ready() {
@@ -133,6 +135,16 @@ void ready() {
 	mesh->loadObj("assets/deagle/ESe.obj");
 	mesh->setColorTexture(texture);
 	vm.addMesh(mesh);
+
+	planeTexture = new Texture(&vm);
+	planeTexture->load("assets/default.png");
+
+	planeMesh = new Mesh;
+	planeMesh->loadObj("assets/quad.obj");
+	planeMesh->setColorTexture(planeTexture);
+	planeMesh->setTransform(glm::rotate(glm::translate(glm::mat4(1.), glm::vec3(-2, 0, 0)), glm::radians(-90.f), glm::vec3(0, 0, 1)));
+	vm.addMesh(planeMesh);
+
 #endif
 }
 
@@ -162,6 +174,12 @@ void exit() {
 
 	delete texture;
 	texture = nullptr;
+
+	delete planeMesh;
+	planeMesh = nullptr;
+
+	delete planeTexture;
+	planeTexture = nullptr;
 #endif
 }
 
@@ -181,10 +199,11 @@ void tick(float deltaTime) {
 #endif
 
 #if LOAD_TEST
-	Camera &cam = vm.getVulkanServer()->getCamera();
-	glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght)));
-	cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(20.f), glm::vec3(0, 1, 0));
-	cam.setTransform(cameraBoom * camTransform);
+		//Camera &cam = vm.getVulkanServer()->getCamera();
+		//glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght)));
+		//cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(180.f), glm::vec3(0, 1, 0));
+		//cam.lookAt((cameraBoom * camTransform)[3], glm::vec3(0, 0, 0));
+
 #endif
 }
 
