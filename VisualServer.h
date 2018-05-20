@@ -353,8 +353,7 @@ private:
 	void destroyBufferMemoryHostAllocator();
 
 	// typeBits indicate the suitable types of memory for the buffer
-	int32_t chooseMemoryType(uint32_t p_typeBits,
-			VkMemoryPropertyFlags p_propertyFlags);
+	int32_t chooseMemoryType(uint32_t p_typeBits, VkMemoryPropertyFlags p_propertyFlags);
 
 	bool createUniformBuffers();
 	void destroyUniformBuffers();
@@ -389,46 +388,31 @@ private:
 
 	void removeAllMeshes();
 
-	bool checkInstanceExtensionsSupport(
-			const vector<const char *> &p_required_extensions);
+	bool checkInstanceExtensionsSupport(const vector<const char *> &p_required_extensions);
 	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
 
 	// Return the ID in the array of selected device
-	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices,
-			VkPhysicalDeviceType p_device,
-			VkPhysicalDeviceProperties *r_deviceProps);
+	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device, VkPhysicalDeviceProperties *r_deviceProps);
 
 private:
 	// Helpers
 	void recreateSwapchain();
 
 	// return the size of allocated memory, or 0 if error.
-	bool createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size,
-			VkBufferUsageFlags p_usage, VkSharingMode p_sharingMode,
-			VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer,
-			VmaAllocation &r_allocation);
-	void destroyBuffer(VmaAllocator p_allocator, VkBuffer &r_buffer,
-			VmaAllocation &r_allocation);
+	bool createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size, VkBufferUsageFlags p_usage, VkSharingMode p_sharingMode, VmaMemoryUsage p_memoryUsage, VkBuffer &r_buffer, VmaAllocation &r_allocation);
+	void destroyBuffer(VmaAllocator p_allocator, VkBuffer &r_buffer, VmaAllocation &r_allocation);
 
 	bool hasStencilComponent(VkFormat p_format);
 	VkFormat findBestDepthFormat();
 
 	// Accept the list of format in an ordered list from the best to worst
 	// and return one of it if it's supported by the Hardware
-	bool chooseBestSupportedFormat(const vector<VkFormat> &p_formats,
-			VkImageTiling p_tiling,
-			VkFormatFeatureFlags p_features,
-			VkFormat *r_format);
+	bool chooseBestSupportedFormat(const vector<VkFormat> &p_formats, VkImageTiling p_tiling, VkFormatFeatureFlags p_features, VkFormat *r_format);
 
-	bool createImage(uint32_t p_width, uint32_t p_height, VkFormat p_format,
-			VkImageTiling p_tiling, VkImageUsageFlags p_usage,
-			VkMemoryPropertyFlags p_memoryFlags, VkImage &r_image,
-			VkDeviceMemory &r_memory);
+	bool createImage(uint32_t p_width, uint32_t p_height, VkFormat p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &r_image, VkDeviceMemory &r_memory);
 	void destroyImage(VkImage &p_image, VkDeviceMemory &p_memory);
 
-	bool createImageView(VkImage p_image, VkFormat p_format,
-			VkImageAspectFlags p_aspectFlags,
-			VkImageView &r_imageView);
+	bool createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, VkImageView &r_imageView);
 	void destroyImageView(VkImageView &r_imageView);
 
 	// Command Buffers helpers

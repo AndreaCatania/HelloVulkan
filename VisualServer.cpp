@@ -256,11 +256,8 @@ void VulkanServer::draw() {
 
 	// Acquire the next image
 	uint32_t imageIndex;
-	VkResult acquireRes = vkAcquireNextImageKHR(
-			device, swapchain, LONGTIMEOUT_NANOSEC, imageAvailableSemaphore,
-			VK_NULL_HANDLE, &imageIndex);
-	if (VK_ERROR_OUT_OF_DATE_KHR == acquireRes ||
-			VK_SUBOPTIMAL_KHR == acquireRes) {
+	VkResult acquireRes = vkAcquireNextImageKHR(device, swapchain, LONGTIMEOUT_NANOSEC, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+	if (VK_ERROR_OUT_OF_DATE_KHR == acquireRes || VK_SUBOPTIMAL_KHR == acquireRes) {
 		// Vulkan tell me that the surface is no more compatible, so is mandatory
 		// recreate the swap chain
 		recreateSwapchain();
@@ -268,8 +265,7 @@ void VulkanServer::draw() {
 	}
 
 	// This is used to be sure that the previous drawing has finished
-	vkWaitForFences(device, 1, &drawFinishFences[imageIndex], VK_TRUE,
-			LONGTIMEOUT_NANOSEC);
+	vkWaitForFences(device, 1, &drawFinishFences[imageIndex], VK_TRUE, LONGTIMEOUT_NANOSEC);
 	vkResetFences(device, 1, &drawFinishFences[imageIndex]);
 
 	// Submit draw commands
@@ -288,8 +284,7 @@ void VulkanServer::draw() {
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &renderFinishedSemaphores[imageIndex];
 
-	if (VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo,
-							  drawFinishFences[imageIndex])) {
+	if (VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFinishFences[imageIndex])) {
 		print("[ERROR not handled] Error during queue submission");
 		return;
 	}
@@ -304,8 +299,7 @@ void VulkanServer::draw() {
 	presInfo.pImageIndices = &imageIndex;
 
 	VkResult presentRes = vkQueuePresentKHR(presentationQueue, &presInfo);
-	if (VK_ERROR_OUT_OF_DATE_KHR == presentRes ||
-			VK_SUBOPTIMAL_KHR == presentRes) {
+	if (VK_ERROR_OUT_OF_DATE_KHR == presentRes || VK_SUBOPTIMAL_KHR == presentRes) {
 		// Vulkan tell me that the surface is no more compatible, so is mandatory
 		// recreate the swap chain
 		recreateSwapchain();
@@ -527,14 +521,11 @@ bool VulkanServer::createDebugCallback() {
 
 	VkDebugReportCallbackCreateInfoEXT createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-	createInfo.flags =
-			VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+	createInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
 	createInfo.pfnCallback = debugCallbackFnc;
 
 	// Load the extension function to create the callback
-	PFN_vkCreateDebugReportCallbackEXT func =
-			(PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(
-					instance, "vkCreateDebugReportCallbackEXT");
+	PFN_vkCreateDebugReportCallbackEXT func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
 	if (!func) {
 		print("[Error] Can't load function to create debug callback");
 		return false;
@@ -554,9 +545,7 @@ void VulkanServer::destroyDebugCallback() {
 	if (debugCallback == VK_NULL_HANDLE)
 		return;
 
-	PFN_vkDestroyDebugReportCallbackEXT func =
-			(PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
-					instance, "vkDestroyDebugReportCallbackEXT");
+	PFN_vkDestroyDebugReportCallbackEXT func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
 	if (!func) {
 		print("[ERROR] Destroy functin not loaded");
 		return;
@@ -595,19 +584,15 @@ bool VulkanServer::pickPhysicalDevice() {
 		return false;
 	}
 	vector<VkPhysicalDevice> availableDevices(availableDevicesCount);
-	vkEnumeratePhysicalDevices(instance, &availableDevicesCount,
-			availableDevices.data());
+	vkEnumeratePhysicalDevices(instance, &availableDevicesCount, availableDevices.data());
 
 	VkPhysicalDeviceProperties deviceProps;
 
-	int id = autoSelectPhysicalDevice(
-			availableDevices, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, &deviceProps);
+	int id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, &deviceProps);
 	if (id < 0) {
-		id = autoSelectPhysicalDevice(
-				availableDevices, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, &deviceProps);
+		id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, &deviceProps);
 		if (id < 0) {
-			id = autoSelectPhysicalDevice(availableDevices,
-					VK_PHYSICAL_DEVICE_TYPE_CPU, &deviceProps);
+			id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_CPU, &deviceProps);
 			if (id < 0) {
 				print("[Error] No suitable device");
 				return false;
@@ -1747,8 +1732,7 @@ bool VulkanServer::allocateConfigureMeshesDescriptorSet() {
 	allocationInfo.descriptorSetCount = 1;
 	allocationInfo.pSetLayouts = &meshesDescriptorSetLayout;
 
-	VkResult res =
-			vkAllocateDescriptorSets(device, &allocationInfo, &meshesDescriptorSet);
+	VkResult res = vkAllocateDescriptorSets(device, &allocationInfo, &meshesDescriptorSet);
 	if (res != VK_SUCCESS) {
 		print("[ERROR] Allocation of descriptor set failed");
 		return false;
@@ -1765,8 +1749,7 @@ bool VulkanServer::allocateConfigureMeshesDescriptorSet() {
 	meshesWriteDescriptor.dstSet = meshesDescriptorSet;
 	meshesWriteDescriptor.dstBinding = 0;
 	meshesWriteDescriptor.dstArrayElement = 0;
-	meshesWriteDescriptor.descriptorType =
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	meshesWriteDescriptor.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	meshesWriteDescriptor.descriptorCount = 1;
 	meshesWriteDescriptor.pBufferInfo = &meshBufferInfo;
 
@@ -1821,15 +1804,13 @@ bool VulkanServer::allocateCommandBuffers() {
 	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocateInfo.commandBufferCount = (uint32_t)drawCommandBuffers.size();
 
-	if (VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo,
-							  drawCommandBuffers.data())) {
+	if (VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, drawCommandBuffers.data())) {
 		print("[ERROR] Draw Command buffer allocation fail");
 		return false;
 	}
 
 	allocateInfo.commandBufferCount = 1;
-	if (VK_SUCCESS !=
-			vkAllocateCommandBuffers(device, &allocateInfo, &copyCommandBuffer)) {
+	if (VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, &copyCommandBuffer)) {
 		print("[ERROR] Copy command buffer allocation failed");
 		return false;
 	}
@@ -1840,8 +1821,7 @@ bool VulkanServer::allocateCommandBuffers() {
 
 void VulkanServer::beginCommandBuffers() {
 
-	vkWaitForFences(device, drawFinishFences.size(), drawFinishFences.data(),
-			VK_TRUE, LONGTIMEOUT_NANOSEC);
+	vkWaitForFences(device, drawFinishFences.size(), drawFinishFences.data(), VK_TRUE, LONGTIMEOUT_NANOSEC);
 	for (int i = drawCommandBuffers.size() - 1; 0 <= i; --i) {
 
 		VkCommandBufferBeginInfo beginInfo = {};
@@ -1866,35 +1846,25 @@ void VulkanServer::beginCommandBuffers() {
 		renderPassBeginInfo.pClearValues = clearValues;
 
 		// Begin render pass
-		vkCmdBeginRenderPass(drawCommandBuffers[i], &renderPassBeginInfo,
-				VK_SUBPASS_CONTENTS_INLINE);
+		vkCmdBeginRenderPass(drawCommandBuffers[i], &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// Bind graphics pipeline
-		vkCmdBindPipeline(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS,
-				graphicsPipeline);
+		vkCmdBindPipeline(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
 		if (meshes.size() > 0) {
 			// 0 camera, 1 mesh, 2 mesh images
-			VkDescriptorSet descriptorSets[] = { cameraDescriptorSet, VK_NULL_HANDLE,
-				VK_NULL_HANDLE };
+			VkDescriptorSet descriptorSets[] = { cameraDescriptorSet, VK_NULL_HANDLE, VK_NULL_HANDLE };
 			// Bind buffers
 			for (int m = 0, s = meshes.size(); m < s; ++m) {
 				MeshHandle *mh = meshes[m];
-				descriptorSets[1] =
-						meshesDescriptorSet; // TODOD set here the right descriptor set
+				descriptorSets[1] = meshesDescriptorSet; // TODOD set here the right descriptor set
 				descriptorSets[2] = mh->imageDescriptorSet;
-				uint32_t dynamicOffset =
-						mh->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
+				uint32_t dynamicOffset = mh->meshUniformBufferOffset * meshDynamicUniformBufferOffset;
 
-				vkCmdBindDescriptorSets(drawCommandBuffers[i],
-						VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
-						0, 3, descriptorSets, 1, &dynamicOffset);
-				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &mh->vertexBuffer,
-						&mh->verticesBufferOffset);
-				vkCmdBindIndexBuffer(drawCommandBuffers[i], mh->indexBuffer,
-						mh->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
-				vkCmdDrawIndexed(drawCommandBuffers[i], mh->mesh->getCountIndices(), 1,
-						0, 0, 0);
+				vkCmdBindDescriptorSets(drawCommandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 3, descriptorSets, 1, &dynamicOffset);
+				vkCmdBindVertexBuffers(drawCommandBuffers[i], 0, 1, &mh->vertexBuffer, &mh->verticesBufferOffset);
+				vkCmdBindIndexBuffer(drawCommandBuffers[i], mh->indexBuffer, mh->indicesBufferOffset, VK_INDEX_TYPE_UINT32);
+				vkCmdDrawIndexed(drawCommandBuffers[i], mh->mesh->getCountIndices(), 1, 0, 0, 0);
 			}
 		}
 
