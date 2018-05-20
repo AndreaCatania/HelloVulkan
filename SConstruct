@@ -8,6 +8,16 @@ vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
 
 # -----------
 
+# Get Arguments
+platform = ARGUMENTS.get('platform', 0)
+target = ARGUMENTS.get('target', "debug")
+
+# Arguments check
+if platform != "windows" and platform != "linux":
+    print "The argument platform should be windows or linux"
+    Exit(9553) #Invalid property
+
+# Make dirs
 Execute(Mkdir('bin'))
 Execute(Mkdir('shaders/bin'))
 
@@ -15,7 +25,13 @@ Execute(Mkdir('shaders/bin'))
 Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.vert -o ./shaders/bin/vert.spv")
 Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.frag -o ./shaders/bin/frag.spv")
 
-# Compile executable
-Program('#bin/hello_vulkan', ['main.cpp','mesh.cpp', 'texture.cpp', 'VisualServer.cpp'], LIBS=['SDL2', 'vulkan-1'], LIBPATH=[sdl_lib_path, vulkan_lib_path], CPPPATH=[ '#libs' ])
+# Project building
+env = Environment()
 
+if target=='debug':
+    if platform=='windows':
+        env.Append(LINKFLAGS=['/DEBUG'] )
+
+# Compile executable
+env.Program('#bin/hello_vulkan', ['main.cpp','mesh.cpp', 'texture.cpp', 'VisualServer.cpp'], LIBS=['SDL2', 'vulkan-1'], LIBPATH=[sdl_lib_path, vulkan_lib_path], CPPPATH=[ '#libs' ])
 
