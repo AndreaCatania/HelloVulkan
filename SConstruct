@@ -6,6 +6,9 @@ vulkan_SDK_path = r"C:\VulkanSDK\1.1.73.0"
 vulkan_lib_path = vulkan_SDK_path + r"\Lib"
 vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
 
+executable_name = 'hello_vulkan'
+executable_dir = '#bin'
+
 # -----------
 
 # Get Arguments
@@ -28,8 +31,6 @@ Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.frag -o ./shaders/b
 # Project building
 env = Environment()
 
-executable_name = '#bin/hello_vulkan'
-
 if target=='debug':
     if platform=='windows':
         env.Append(LINKFLAGS=['/DEBUG'] )
@@ -37,5 +38,5 @@ if target=='debug':
         executable_name += '.debug.exe'
 
 # Compile executable
-env.Program(executable_name, ['main.cpp','mesh.cpp', 'texture.cpp', 'VisualServer.cpp'], LIBS=['SDL2', 'vulkan-1'], LIBPATH=[sdl_lib_path, vulkan_lib_path], CPPPATH=[ '#libs' ])
+env.Program(executable_dir + '/' + executable_name, ['main.cpp','mesh.cpp', 'texture.cpp', 'VisualServer.cpp'], LIBS=['SDL2', 'vulkan-1'], LIBPATH=[sdl_lib_path, vulkan_lib_path], CPPPATH=[ '#libs' ])
 
