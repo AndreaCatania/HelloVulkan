@@ -2469,7 +2469,7 @@ void WindowSDL::instanceWindow(const char *p_title, int p_width, int p_height) {
 	if (window)
 		return;
 
-	window = SDL_CreateWindow(p_title, 0, 0, p_width, p_height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+	window = SDL_CreateWindow(p_title, 50, 50, p_width, p_height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
 }
 
 void WindowSDL::freeWindow() {
