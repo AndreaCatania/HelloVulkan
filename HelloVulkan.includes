@@ -1,14 +1,7 @@
 .
-libs/
 libs/glm/simd
+libs/SDL
 libs/stb
 libs/tiny_obj_loader
 libs/vma
-libs/glm/ext
-libs/glm/detail
-libs/glm
-libs/GLFW
-libs/glm/gtc
-libs/glm/gtx
 libs/vulkan
-libs/GLFW/src

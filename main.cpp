@@ -184,7 +184,7 @@ void exit() {
 }
 
 void tick(float deltaTime) {
-//cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
+	//cout << "FPS: " << to_string((int)(1/deltaTime)) << endl;
 
 #if CLOUDY_CUBES_TEST
 
@@ -199,15 +199,17 @@ void tick(float deltaTime) {
 #endif
 
 #if LOAD_TEST
-		//Camera &cam = vm.getVulkanServer()->getCamera();
-		//glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght)));
-		//cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(180.f), glm::vec3(0, 1, 0));
-		//cam.lookAt((cameraBoom * camTransform)[3], glm::vec3(0, 0, 0));
+	//Camera &cam = vm.getVulkanServer()->getCamera();
+	//glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght)));
+	//cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(180.f), glm::vec3(0, 1, 0));
+	//cam.lookAt((cameraBoom * camTransform)[3], glm::vec3(0, 0, 0));
 
 #endif
 }
 
 int main() {
+	char *t = "VK_LAYER_PATH=driver/LunarG/explicit_layer.d";
+	putenv(t);
 
 	if (SDL_Init(SDL_INIT_VIDEO) == 0) {
 

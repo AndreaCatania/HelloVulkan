@@ -1,26 +1,46 @@
 
-# TODO make it platform agnostic
-sdl_lib_path = r"C:\Program Files\SDL\lib\x64"
-vulkan_SDK_path = r"C:\VulkanSDK\1.1.73.0"
-
-vulkan_lib_path = vulkan_SDK_path + r"\Lib"
-vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
-
 executable_name = 'hello_vulkan'
 executable_dir = '#bin'
 
 # -----------
 
-# Get Arguments
+""" Get Arguments """
 platform = ARGUMENTS.get('platform', 0)
 target = ARGUMENTS.get('target', "debug")
+vulkan_SDK_path = ARGUMENTS.get('vulkan_lib_path', "")
+sdl_lib_path = ARGUMENTS.get('sdl_lib_path', "")
 
-# Arguments check
+
+""" Arguments check """
 if platform != "windows" and platform != "linux":
     print "The argument platform should be windows or linux"
     Exit(9553) #Invalid property
 
-# Make dirs
+# TODO improve compilation by removing this requirment
+if vulkan_SDK_path == "":
+    print "Please set vulkan_lib_path. EG: C:\VulkanSDK\1.1.73.0"
+    Exit(9553) #Invalid property
+
+if sdl_lib_path == "":
+    print "Please set sdl_lib_path"
+    Exit(9553) #Invalid property
+
+
+vulkan_lib_path = ""
+vulkan_glslangValidator_path = ""
+vulkan_library_name = ""
+
+if platform == 'windows':
+    vulkan_lib_path = vulkan_SDK_path + r"\Lib"
+    vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
+    vulkan_library_name = "vulkan-1"
+elif platform == 'linux':
+    vulkan_lib_path = vulkan_SDK_path + r"/lib"
+    vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
+    vulkan_library_name = "vulkan"
+
+
+""" Create directories """
 Execute(Mkdir('bin'))
 Execute(Mkdir('shaders/bin'))
 
@@ -36,7 +56,20 @@ if target=='debug':
         env.Append(LINKFLAGS=['/DEBUG'] )
         env.Append(CCFLAGS=['/Zi'] )
         executable_name += '.debug.exe'
+    elif platform=='linux':
+        env.Append(CCFLAGS=['-ggdb'])
+        executable_name += '.debug'
+
+if platform == 'window':
+    pass
+elif platform == 'linux':
+    pass
+    # Add Lunar G Validation layer
 
 # Compile executable
-env.Program(executable_dir + '/' + executable_name, ['main.cpp','mesh.cpp', 'texture.cpp', 'VisualServer.cpp'], LIBS=['SDL2', 'vulkan-1'], LIBPATH=[sdl_lib_path, vulkan_lib_path], CPPPATH=[ '#libs' ])
+env.Program(executable_dir + '/' + executable_name,
+            ['main.cpp', 'mesh.cpp', 'texture.cpp', 'VisualServer.cpp'],
+            LIBS=['SDL2', vulkan_library_name],
+            LIBPATH=[sdl_lib_path, vulkan_lib_path],
+            CPPPATH=[ '#libs' ])
 
