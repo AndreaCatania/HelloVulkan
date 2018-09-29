@@ -149,10 +149,10 @@ VulkanServer::VulkanServer(VisualServer *p_visualServer) :
 }
 
 bool VulkanServer::enableValidationLayer() {
-#ifdef NDEBUG
-	return false;
-#else
+#ifdef DEBUG_ENABLED
 	return true;
+#else
+	return false;
 #endif
 }
 
@@ -2484,8 +2484,10 @@ bool VisualServer::init() {
 	createWindow();
 	const bool vulkanState = vulkanServer.create(window);
 
-	defaultTexture = new Texture(&vulkanServer);
-	defaultTexture->load("assets/default.png");
+	if (vulkanState) {
+		defaultTexture = new Texture(&vulkanServer);
+		defaultTexture->load("assets/default.png");
+	}
 
 	return vulkanState;
 }

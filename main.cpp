@@ -207,9 +207,19 @@ void tick(float deltaTime) {
 #endif
 }
 
+#define INTERNAL_AS_STRING(s) #s
+#define AS_STRING(s) INTERNAL_AS_STRING(s)
+
+/// This is really handy to avoid to set environment variable from outside
+void init_environment_variable() {
+#ifdef DEBUG_ENABLED
+	putenv(AS_STRING(VULKAN_LD_LIBRARY));
+	putenv(AS_STRING(VULKAN_EXPLICIT_LAYERS));
+#endif
+}
+
 int main() {
-	char *t = "VK_LAYER_PATH=driver/LunarG/explicit_layer.d";
-	putenv(t);
+	init_environment_variable();
 
 	if (SDL_Init(SDL_INIT_VIDEO) == 0) {
 

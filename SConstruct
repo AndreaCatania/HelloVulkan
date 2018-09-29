@@ -52,6 +52,11 @@ Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.frag -o ./shaders/b
 env = Environment()
 
 if target=='debug':
+
+    env.Append(CPPDEFINES=['DEBUG_ENABLED'])
+    env.Append(CPPDEFINES={'VULKAN_LD_LIBRARY' : 'LD_LIBRARY_PATH=' + vulkan_lib_path})
+    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=' + vulkan_SDK_path + '/etc/explicit_layer.d'})
+
     if platform=='windows':
         env.Append(LINKFLAGS=['/DEBUG'] )
         env.Append(CCFLAGS=['/Zi'] )
