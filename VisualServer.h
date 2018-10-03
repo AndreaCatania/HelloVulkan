@@ -4,7 +4,7 @@
 #include <chrono>
 
 class VisualServer;
-class Window;
+class WindowServer;
 class Mesh;
 struct MeshHandle;
 class Texture;
@@ -158,7 +158,7 @@ public:
 
 	bool enableValidationLayer();
 
-	bool create(Window *p_window);
+	bool create(WindowServer *p_window);
 	void destroy();
 
 	void waitIdle();
@@ -180,7 +180,7 @@ public:
 	bool createImageViewTexture(VkImage p_image, VkImageView &r_imageView);
 
 private:
-	Window *window;
+	WindowServer *window;
 	VisualServer *visualServer;
 
 	VkInstance instance;
@@ -426,42 +426,15 @@ private:
 	bool transitionImageLayout(VkImage p_image, VkFormat p_format, VkImageLayout p_oldLayout, VkImageLayout p_newLayout);
 };
 
-class Window {
-public:
-	virtual void instanceWindow(const char *p_title, int p_width, int p_height) = 0;
-	virtual void freeWindow() = 0;
-	virtual bool isDrawable() = 0;
-	virtual void getWindowSize(int *r_width, int *r_height) = 0;
-	virtual void appendRequiredExtensions(vector<const char *> &r_extensions) = 0;
-	virtual bool createSurface(VkInstance p_instance, VkSurfaceKHR *r_surface) = 0;
-};
-
-class WindowSDL : public Window {
-private:
-	SDL_Window *window;
-
-public:
-	bool running;
-
-public:
-	WindowSDL();
-	virtual void instanceWindow(const char *p_title, int p_width, int p_height);
-	virtual void freeWindow();
-	virtual bool isDrawable();
-	virtual void getWindowSize(int *r_width, int *r_height);
-	virtual void appendRequiredExtensions(vector<const char *> &r_extensions);
-	virtual bool createSurface(VkInstance p_instance, VkSurfaceKHR *r_surface);
-};
-
 class VisualServer {
 	friend class VulkanServer;
 
 	Texture *defaultTexture;
-	Window *window;
+	WindowServer *window_server;
 	VulkanServer vulkanServer;
 
 public:
-	VisualServer();
+	VisualServer(WindowServer *p_window);
 	~VisualServer();
 
 	bool init();
@@ -477,6 +450,6 @@ public:
 	const Texture *getDefaultTeture() const { return defaultTexture; }
 
 private:
-	void createWindow();
+	bool createWindow();
 	void freeWindow();
 };

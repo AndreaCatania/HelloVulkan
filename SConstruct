@@ -1,4 +1,6 @@
 
+import methods
+
 executable_name = 'hello_vulkan'
 executable_dir = '#bin'
 
@@ -8,7 +10,6 @@ executable_dir = '#bin'
 platform = ARGUMENTS.get('platform', 0)
 target = ARGUMENTS.get('target', "debug")
 vulkan_SDK_path = ARGUMENTS.get('vulkan_lib_path', "")
-sdl_lib_path = ARGUMENTS.get('sdl_lib_path', "")
 
 
 """ Arguments check """
@@ -19,10 +20,6 @@ if platform != "windows" and platform != "linux":
 # TODO improve compilation by removing this requirment
 if vulkan_SDK_path == "":
     print "Please set vulkan_lib_path. EG: C:\VulkanSDK\1.1.73.0"
-    Exit(9553) #Invalid property
-
-if sdl_lib_path == "":
-    print "Please set sdl_lib_path"
     Exit(9553) #Invalid property
 
 
@@ -44,12 +41,22 @@ elif platform == 'linux':
 Execute(Mkdir('bin'))
 Execute(Mkdir('shaders/bin'))
 
-# Compile shaders
+""" Compile shaders """
 Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.vert -o ./shaders/bin/vert.spv")
 Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.frag -o ./shaders/bin/frag.spv")
 
-# Project building
+""" Project building """
 env = Environment()
+
+env.__class__.add_source_files = methods.add_source_files
+env.__class__.add_library = methods.add_library
+env.__class__.disable_warnings = methods.disable_warnings
+
+# Load module list of engine
+env.module_list = methods.detect_modules()
+
+# default include path
+env.Append(CPPPATH=[ '#libs', '#' ])
 
 if target=='debug':
 
@@ -65,16 +72,16 @@ if target=='debug':
         env.Append(CCFLAGS=['-ggdb'])
         executable_name += '.debug'
 
-if platform == 'window':
-    pass
-elif platform == 'linux':
-    pass
-    # Add Lunar G Validation layer
+Export('env')
+
+""" Script executions """
+SConscript("servers/SCsub")
+SConscript("modules/SCsub")
+
+env.Prepend(LIBS=[vulkan_library_name])
+env.Prepend(LIBPATH=[vulkan_lib_path])
 
 # Compile executable
 env.Program(executable_dir + '/' + executable_name,
-            ['main.cpp', 'mesh.cpp', 'texture.cpp', 'VisualServer.cpp'],
-            LIBS=['SDL2', vulkan_library_name],
-            LIBPATH=[sdl_lib_path, vulkan_lib_path],
-            CPPPATH=[ '#libs' ])
+            ['main.cpp', 'mesh.cpp', 'texture.cpp', 'VisualServer.cpp'])
 

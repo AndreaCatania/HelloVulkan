@@ -5,7 +5,7 @@
 //#include "GLFW/glfw3.h"
 
 #define SDL_MAIN_HANDLED
-#include "SDL/SDL.h"
+#include "thirdparty/SDL2/include/SDL.h"
 
 #include "libs/vma/vk_mem_alloc.h" // Includes only interfaces
 

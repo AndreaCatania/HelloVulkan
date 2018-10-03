@@ -1,14 +1,14 @@
 #include "VisualServer.h"
 
-#include "SDL/SDL_vulkan.h"
+#include "thirdparty/SDL2/include/SDL_vulkan.h"
 
 // Implementation of VMA
 #define VMA_IMPLEMENTATION
 #include "libs/vma/vk_mem_alloc.h"
 
 #include "mesh.h"
+#include "servers/window_server.h"
 #include "texture.h"
-
 #include <fstream>
 #include <iostream>
 
@@ -156,7 +156,7 @@ bool VulkanServer::enableValidationLayer() {
 #endif
 }
 
-bool VulkanServer::create(Window *p_window) {
+bool VulkanServer::create(WindowServer *p_window) {
 
 	window = p_window;
 
@@ -1071,7 +1071,7 @@ bool VulkanServer::createRenderPass() {
 }
 
 void VulkanServer::destroyRenderPass() {
-	if (VK_NULL_HANDLE == renderPass)
+	if (VK_NULL_HANDLE == device)
 		return;
 	vkDestroyRenderPass(device, renderPass, nullptr);
 	renderPass = VK_NULL_HANDLE;
@@ -2222,6 +2222,8 @@ bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height,
 }
 
 void VulkanServer::destroyImage(VkImage &p_image, VkDeviceMemory &p_memory) {
+	if (VK_NULL_HANDLE == device)
+		return;
 	vkDestroyImage(device, p_image, nullptr);
 	vkFreeMemory(device, p_memory, nullptr);
 	p_image = VK_NULL_HANDLE;
@@ -2256,6 +2258,8 @@ bool VulkanServer::createImageView(VkImage p_image, VkFormat p_format,
 }
 
 void VulkanServer::destroyImageView(VkImageView &r_imageView) {
+	if (VK_NULL_HANDLE == device)
+		return;
 	vkDestroyImageView(device, r_imageView, nullptr);
 	r_imageView = VK_NULL_HANDLE;
 }
@@ -2337,7 +2341,7 @@ bool VulkanServer::submitWaitCommand(VkCommandBuffer p_command) {
 }
 
 void VulkanServer::freeCommand(VkCommandBuffer &r_command) {
-	if (VK_NULL_HANDLE == r_command)
+	if (VK_NULL_HANDLE == device)
 		return;
 	vkFreeCommandBuffers(device, graphicsCommandPool, 1, &r_command);
 	r_command = VK_NULL_HANDLE;
@@ -2431,58 +2435,19 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format,
 	return success;
 }
 
-WindowSDL::WindowSDL() :
-		window(nullptr),
-		running(true) {}
-
-void WindowSDL::instanceWindow(const char *p_title, int p_width, int p_height) {
-	if (window)
-		return;
-
-	window = SDL_CreateWindow(p_title, 50, 50, p_width, p_height, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
-}
-
-void WindowSDL::freeWindow() {
-	SDL_DestroyWindow(window);
-	window = nullptr;
-}
-
-bool WindowSDL::isDrawable() {
-	return running;
-}
-
-void WindowSDL::getWindowSize(int *r_width, int *r_height) {
-	SDL_Vulkan_GetDrawableSize(window, r_width, r_height);
-}
-
-void WindowSDL::appendRequiredExtensions(vector<const char *> &r_extensions) {
-
-	uint32_t count = 0;
-	const char **requiredExtensions;
-
-	SDL_Vulkan_GetInstanceExtensions(window, &count, nullptr);
-	requiredExtensions = new const char *[count];
-
-	SDL_Vulkan_GetInstanceExtensions(window, &count, requiredExtensions);
-	r_extensions.insert(r_extensions.end(), &requiredExtensions[0], &requiredExtensions[count]);
-
-	delete[] requiredExtensions;
-}
-
-bool WindowSDL::createSurface(VkInstance p_instance, VkSurfaceKHR *r_surface) {
-	return SDL_TRUE == SDL_Vulkan_CreateSurface(window, p_instance, r_surface);
-}
-
-VisualServer::VisualServer() :
+VisualServer::VisualServer(WindowServer *p_window) :
 		defaultTexture(nullptr),
-		window(nullptr),
+		window_server(p_window),
 		vulkanServer(this) {}
 
 VisualServer::~VisualServer() {}
 
 bool VisualServer::init() {
-	createWindow();
-	const bool vulkanState = vulkanServer.create(window);
+
+	if (!createWindow())
+		return false;
+
+	const bool vulkanState = vulkanServer.create(window_server);
 
 	if (vulkanState) {
 		defaultTexture = new Texture(&vulkanServer);
@@ -2499,7 +2464,7 @@ void VisualServer::terminate() {
 }
 
 bool VisualServer::can_step() {
-	return window->isDrawable();
+	return window_server->isDrawable();
 }
 
 void VisualServer::step() {
@@ -2508,7 +2473,7 @@ void VisualServer::step() {
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
 			if (event.type == SDL_QUIT)
-				static_cast<WindowSDL *>(window)->running = false;
+				window_server->set_drawable(false);
 		}
 	}
 
@@ -2523,12 +2488,10 @@ void VisualServer::removeMesh(Mesh *p_mesh) {
 	vulkanServer.removeMesh(p_mesh);
 }
 
-void VisualServer::createWindow() {
-
-	window = new WindowSDL;
-	window->instanceWindow("Hello Vulkan", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT);
+bool VisualServer::createWindow() {
+	return window_server->instanceWindow("Hello Vulkan", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT);
 }
 
 void VisualServer::freeWindow() {
-	window->freeWindow();
+	window_server->freeWindow();
 }

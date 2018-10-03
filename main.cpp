@@ -4,6 +4,8 @@
 #include "mesh.h"
 #include "texture.h"
 
+#include "modules/SDL2/sdl_window_server.h"
+
 #define CLOUDY_CUBES_TEST 1
 #define TEXTURE_TEST 0
 #define LOAD_TEST 0
@@ -36,7 +38,7 @@ private:
 };
 
 Ticker ticker;
-VisualServer vm;
+VisualServer *vm;
 
 void cubeMaker(Mesh *mesh) {
 
@@ -86,17 +88,17 @@ Texture *planeTexture;
 void ready() {
 
 	// Update camera view
-	vm.getVulkanServer()->getCamera().setNearFar(0.1, 100.);
+	vm->getVulkanServer()->getCamera().setNearFar(0.1, 100.);
 
 	cameraBoom = glm::mat4(1.);
 
-	Camera &cam = vm.getVulkanServer()->getCamera();
+	Camera &cam = vm->getVulkanServer()->getCamera();
 	glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght)));
 	cam.setTransform(cameraBoom * camTransform);
 
 #if CLOUDY_CUBES_TEST
 
-	texture = new Texture(&vm);
+	texture = new Texture(vm);
 	texture->load("assets/TestText.jpg");
 
 	meshes.resize(50);
@@ -108,7 +110,7 @@ void ready() {
 		meshes[i]->setColorTexture(texture);
 		cubeMaker(meshes[i]);
 		meshes[i]->setTransform(glm::translate(glm::mat4(1.), glm::ballRand(ballRadius)));
-		vm.addMesh(meshes[i]);
+		vm->addMesh(meshes[i]);
 	}
 #endif
 
@@ -123,7 +125,7 @@ void ready() {
 	triangleMesh->vertices.push_back(Vertex({ { 1.0f, 1.0f, 1.0f }, { 1., 1. } }));
 	triangleMesh->triangles.push_back(Triangle({ 0, 1, 2 }));
 	triangleMesh->setColorTexture(texture);
-	vm.addMesh(triangleMesh);
+	vm->addMesh(triangleMesh);
 
 #endif
 
@@ -134,7 +136,7 @@ void ready() {
 	mesh = new Mesh;
 	mesh->loadObj("assets/deagle/ESe.obj");
 	mesh->setColorTexture(texture);
-	vm.addMesh(mesh);
+	vm->addMesh(mesh);
 
 	planeTexture = new Texture(&vm);
 	planeTexture->load("assets/default.png");
@@ -143,7 +145,7 @@ void ready() {
 	planeMesh->loadObj("assets/quad.obj");
 	planeMesh->setColorTexture(planeTexture);
 	planeMesh->setTransform(glm::rotate(glm::translate(glm::mat4(1.), glm::vec3(-2, 0, 0)), glm::radians(-90.f), glm::vec3(0, 0, 1)));
-	vm.addMesh(planeMesh);
+	vm->addMesh(planeMesh);
 
 #endif
 }
@@ -152,13 +154,13 @@ void exit() {
 
 #if CLOUDY_CUBES_TEST
 	for (int i = meshes.size() - 1; 0 <= i; --i) {
-		vm.removeMesh(meshes[i]);
+		vm->removeMesh(meshes[i]);
 		delete meshes[i];
 	}
 #endif
 
 #if TEXTURE_TEST
-	vm.removeMesh(triangleMesh);
+	vm->removeMesh(triangleMesh);
 	delete triangleMesh;
 	triangleMesh;
 
@@ -167,7 +169,7 @@ void exit() {
 #endif
 
 #if LOAD_TEST
-	vm.removeMesh(mesh);
+	vm->removeMesh(mesh);
 
 	delete mesh;
 	mesh = nullptr;
@@ -188,7 +190,7 @@ void tick(float deltaTime) {
 
 #if CLOUDY_CUBES_TEST
 
-	Camera &cam = vm.getVulkanServer()->getCamera();
+	Camera &cam = vm->getVulkanServer()->getCamera();
 	glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght)));
 	cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(20.f), glm::vec3(0, 1, 0));
 	cam.setTransform(cameraBoom * camTransform);
@@ -199,7 +201,7 @@ void tick(float deltaTime) {
 #endif
 
 #if LOAD_TEST
-	//Camera &cam = vm.getVulkanServer()->getCamera();
+	//Camera &cam = vm->getVulkanServer()->getCamera();
 	//glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght)));
 	//cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(180.f), glm::vec3(0, 1, 0));
 	//cam.lookAt((cameraBoom * camTransform)[3], glm::vec3(0, 0, 0));
@@ -221,21 +223,32 @@ void init_environment_variable() {
 int main() {
 	init_environment_variable();
 
-	if (SDL_Init(SDL_INIT_VIDEO) == 0) {
+	SDLWindowServer *window_server = new SDLWindowServer;
 
-		if (vm.init()) {
+	if (window_server->init()) {
+
+		vm = new VisualServer(window_server);
+		if (vm->init()) {
+
 			ticker.init();
 			ready();
-			while (vm.can_step()) {
+			while (vm->can_step()) {
 				ticker.step();
 				tick(ticker.getDeltaTime());
-				vm.step();
+				vm->step();
 			}
+
 			exit();
+			vm->terminate();
 		}
+		delete vm;
+		vm = NULL;
+
+		window_server->terminate();
 	}
 
-	vm.terminate();
-	SDL_Quit();
+	delete window_server;
+	window_server = NULL;
+
 	return 0;
 }

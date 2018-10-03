@@ -1,0 +1,42 @@
+
+import methods
+
+Import('env')
+Import('env_modules')
+
+env_sdl = env_modules.Clone()
+
+excludes = [
+    '/wayland',
+    '/winmm',
+    '/windows',
+    '/winrt',
+    '/haiku',
+    '/android',
+    '/kmsdrm',
+    '/cocoa',
+    '/emscripten',
+    '/macosx',
+    '/mir',
+    '/qnx',
+    '/nacl',
+    '/directfb',
+    '/psp',
+    '/raspberry',
+    '/pandora',
+    '/stdcpp',
+    'src/test',
+    'src/haptic',
+    '/dynapi'
+]
+
+thirdparty_sources = methods.detect_files("../../thirdparty/SDL2/src", excludes, ['c', 'cc', 'cpp'])
+
+env_sdl.Append(CPPPATH=["../../thirdparty/SDL2/include"])
+
+# Thirdparty source files
+env_sdl.disable_warnings()
+env_sdl.add_source_files(env.modules_sources, thirdparty_sources)
+
+# Godot source files
+env_sdl.add_source_files(env.modules_sources, "*.cpp")
