@@ -223,7 +223,7 @@ void init_environment_variable() {
 int main() {
 	init_environment_variable();
 
-	SDLWindowServer *window_server = new SDLWindowServer;
+	WindowServer *window_server = nullptr; //new SDLWindowServer;
 
 	if (window_server->init()) {
 

@@ -149,3 +149,6 @@ thirdparty/SDL2/src/joystick/psp
 modules
 modules/SDL2
 servers
+platforms/x11
+platforms
+platforms/windows

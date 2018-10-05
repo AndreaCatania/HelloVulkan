@@ -4,7 +4,7 @@ import glob
 
 from compat import iteritems, isbasestring
 
-def add_source_files(self, sources, filetype, lib_env=None, shared=False):
+def add_source_files(self, sources, filetype):
 
     if isbasestring(filetype):
         dir_path = self.Dir('.').abspath
@@ -20,6 +20,23 @@ def disable_warnings(self):
     #    self.Append(CCFLAGS=['/w'])
     #else:
     self.Append(CCFLAGS=['-w'])
+
+
+def detect_platoforms():
+
+    platforms_list = []
+
+    files = glob.glob("platforms/*")
+    files.sort()
+
+    for x in files:
+        if not os.path.isdir(x):
+            continue
+        x = x.replace("modules\\", "") # win32
+        x = x.replace("modules/", "")  # rest of world
+        platforms_list.append(x)
+
+    return platforms_list
 
 
 def detect_modules():
@@ -103,3 +120,9 @@ def add_library(env, name, sources, **args):
     library = env.Library(name, sources, **args)
     env.NoCache(library)
     return library
+
+
+def add_program(env, name, sources, **args):
+    program = env.Program(name, sources, **args)
+    env.NoCache(program)
+    return program

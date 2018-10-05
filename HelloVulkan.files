@@ -11,6 +11,8 @@ modules/SDL2/config.py
 modules/SDL2/sdl_window_server.cpp
 modules/SDL2/sdl_window_server.h
 modules/register_module_types.h
+platforms/windows/SCsub
+platforms/x11/SCsub
 servers/SCsub
 servers/window_server.h
 texture.cpp

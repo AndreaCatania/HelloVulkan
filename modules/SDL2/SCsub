@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import methods
 
@@ -32,11 +33,13 @@ excludes = [
 
 thirdparty_sources = methods.detect_files("../../thirdparty/SDL2/src", excludes, ['c', 'cc', 'cpp'])
 
+# TODO try to use -> "#thirdparty/SDL2/include"
 env_sdl.Append(CPPPATH=["../../thirdparty/SDL2/include"])
 
 # Thirdparty source files
-env_sdl.disable_warnings()
-env_sdl.add_source_files(env.modules_sources, thirdparty_sources)
+env_thirdparty_sdl = env_sdl.Clone()
+env_thirdparty_sdl.disable_warnings()
+env_thirdparty_sdl.add_source_files(env.modules_sources, thirdparty_sources)
 
-# Godot source files
+# Sdl source files
 env_sdl.add_source_files(env.modules_sources, "*.cpp")
