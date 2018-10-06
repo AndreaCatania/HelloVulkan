@@ -1,12 +1,6 @@
 #ifndef HELLOVULKAN_H
 #define HELLOVULKAN_H
 
-//#define GLFW_INCLUDE_VULKAN
-//#include "GLFW/glfw3.h"
-
-#define SDL_MAIN_HANDLED
-#include "thirdparty/SDL2/include/SDL.h"
-
 #include "libs/vma/vk_mem_alloc.h" // Includes only interfaces
 
 #define GLM_FORCE_RIGHT_HANDED

@@ -1,1 +1,6 @@
-SDL 2.0.8
+
+
+
+# GLFW
+from GitHub https://github.com/glfw/glfw
+Latest commit cc805c0

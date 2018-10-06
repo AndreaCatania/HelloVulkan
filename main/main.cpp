@@ -5,7 +5,7 @@
 #include "core/mesh.h"
 #include "core/texture.h"
 #include "libs/glm/gtc/random.hpp"
-#include "modules/SDL2/sdl_window_server.h"
+#include "modules/glfw/glfw_window_server.h"
 
 #define CLOUDY_CUBES_TEST 1
 #define TEXTURE_TEST 0
@@ -211,7 +211,7 @@ void tick(float deltaTime) {
 }
 
 void Main::start() {
-	WindowServer *window_server = new SDLWindowServer;
+	WindowServer *window_server = new GLFWWindowServer;
 
 	if (window_server->init()) {
 

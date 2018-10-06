@@ -154,3 +154,14 @@ platforms
 platforms/windows
 core
 main
+thirdparty/glfw/deps/vs2008
+thirdparty/glfw/src
+thirdparty/glfw/tests
+thirdparty/glfw/deps/mingw
+thirdparty/glfw/examples
+thirdparty/glfw/include/GLFW
+thirdparty/glfw/deps/glad
+thirdparty/glfw/deps/vulkan
+thirdparty/glfw/deps
+thirdparty/glfw/deps/KHR
+modules/glfw

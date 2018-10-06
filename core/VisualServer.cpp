@@ -1,7 +1,5 @@
 #include "VisualServer.h"
 
-#include "thirdparty/SDL2/include/SDL_vulkan.h"
-
 // Implementation of VMA
 #define VMA_IMPLEMENTATION
 #include "libs/vma/vk_mem_alloc.h"
@@ -2481,11 +2479,9 @@ bool VisualServer::can_step() {
 }
 
 void VisualServer::step() {
-	// TODO Move the event managing outside the VisualServer
 	{
-		SDL_Event event;
-		while (SDL_PollEvent(&event)) {
-			if (event.type == SDL_QUIT)
+		while (window_server->poolEvents()) {
+			if (window_server->wantToQuit())
 				window_server->set_drawable(false);
 		}
 	}
