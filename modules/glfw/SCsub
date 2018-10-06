@@ -5,43 +5,31 @@ import methods
 Import('env')
 Import('env_modules')
 
-env_sdl = env_modules.Clone()
+env_glfw = env_modules.Clone()
 
 excludes = [
-    '/wayland',
-    '/winmm',
-    '/windows',
-    '/winrt',
-    '/haiku',
-    '/android',
-    '/kmsdrm',
-    '/cocoa',
-    '/emscripten',
-    '/macosx',
-    '/mir',
-    '/qnx',
-    '/nacl',
-    '/directfb',
-    '/psp',
-    '/raspberry',
-    '/pandora',
-    '/stdcpp',
-    'src/test',
-    'src/haptic',
-    '/dynapi'
+'cocoa_',
+'win32_',
+'wl_',
+'null_',
+'wgl_',
 ]
 
-thirdparty_sources = methods.detect_files("../../thirdparty/SDL2/src", excludes, ['c', 'cc', 'cpp'])
+thirdparty_sources = methods.detect_files("../../thirdparty/glfw/src", excludes, ['c', 'cc', 'cpp'])
 
-env_sdl.Append(CPPDEFINES=['__LINUX__'])
+env_glfw.Append(CPPDEFINES=['_GLFW_X11'])
 
-# TODO try to use -> "#thirdparty/SDL2/include"
-env_sdl.Append(CPPPATH=["../../thirdparty/SDL2/include"])
+env_glfw.Append(CPPPATH=["#thirdparty/glfw/include"])
 
 # Thirdparty source files
-env_thirdparty_sdl = env_sdl.Clone()
-env_thirdparty_sdl.disable_warnings()
-env_thirdparty_sdl.add_source_files(env.modules_sources, thirdparty_sources)
+env_thirdparty_glfw = env_glfw.Clone()
+env_thirdparty_glfw.disable_warnings()
+env_thirdparty_glfw.add_source_files(env.modules_sources, thirdparty_sources)
+
+# Add library dependecy of GLFW
+env.Append(LIBS=['X11'])
+env.Append(LIBS=['dl'])
+env.Append(LIBS=['pthread'])
 
 # Sdl source files
-env_sdl.add_source_files(env.modules_sources, "*.cpp")
+env_glfw.add_source_files(env.modules_sources, "*.cpp")
