@@ -152,3 +152,5 @@ servers
 platforms/x11
 platforms
 platforms/windows
+core
+main

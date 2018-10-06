@@ -1,9 +1,10 @@
 
-#include "VisualServer.h"
-#include "libs/glm/gtc/random.hpp"
-#include "mesh.h"
-#include "texture.h"
+#include "main.h"
 
+#include "core/VisualServer.h"
+#include "core/mesh.h"
+#include "core/texture.h"
+#include "libs/glm/gtc/random.hpp"
 #include "modules/SDL2/sdl_window_server.h"
 
 #define CLOUDY_CUBES_TEST 1
@@ -209,21 +210,8 @@ void tick(float deltaTime) {
 #endif
 }
 
-#define INTERNAL_AS_STRING(s) #s
-#define AS_STRING(s) INTERNAL_AS_STRING(s)
-
-/// This is really handy to avoid to set environment variable from outside
-void init_environment_variable() {
-#ifdef DEBUG_ENABLED
-	putenv(AS_STRING(VULKAN_LD_LIBRARY));
-	putenv(AS_STRING(VULKAN_EXPLICIT_LAYERS));
-#endif
-}
-
-int main() {
-	init_environment_variable();
-
-	WindowServer *window_server = nullptr; //new SDLWindowServer;
+void Main::start() {
+	WindowServer *window_server = new SDLWindowServer;
 
 	if (window_server->init()) {
 
@@ -249,6 +237,4 @@ int main() {
 
 	delete window_server;
 	window_server = NULL;
-
-	return 0;
 }

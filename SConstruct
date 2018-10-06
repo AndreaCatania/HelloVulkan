@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import methods
+import sys
 
 executable_name = 'hello_vulkan'
 executable_dir = '#bin'
@@ -9,16 +10,21 @@ available_platforms = methods.detect_platoforms()
 
 # -----------
 
+
 """ Get Arguments """
 platform = ARGUMENTS.get('platform', 0)
 target = ARGUMENTS.get('target', "debug")
-vulkan_SDK_path = ARGUMENTS.get('vulkan_lib_path', "")
+vulkan_SDK_path = ARGUMENTS.get('vulkan_SDK_path', "")
+verbose = ARGUMENTS.get('verbose', False)
+
 
 """ Arguments check """
-if platform in available_platforms:
+if platform not in available_platforms:
     string_platforms = ""
     for p in available_platforms:
-        string_platforms += p + ", "
+        if string_platforms != "":
+            string_platforms += " or "
+        string_platforms += p
     print "The argument platform should be " + string_platforms
     Exit(9553) #Invalid property
 
@@ -26,19 +32,21 @@ debug = target == 'debug'
 
 # TODO improve compilation by removing this requirment
 if vulkan_SDK_path == "":
-    print "Please set vulkan_lib_path. EG: C:\VulkanSDK\1.1.73.0"
+    print "Please set vulkan_SDK_path. EG: C:\VulkanSDK\1.1.73.0"
     Exit(9553) #Invalid property
+
 
 """ Create directories """
 Execute(Mkdir('bin'))
 Execute(Mkdir('shaders/bin'))
+
 
 """ Compile shaders """
 # TODO please move this inside the SCsub of directory shaders
 vulkan_glslangValidator_path = ""
 if platform == 'windows':
     vulkan_glslangValidator_path = vulkan_SDK_path + r"\bin\glslangValidator"
-elif platform == 'linux':
+elif platform == 'x11':
     vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
 
 Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.vert -o ./shaders/bin/vert.spv")
@@ -65,17 +73,19 @@ env.module_list = methods.detect_modules()
 # default include path
 env.Append(CPPPATH=[ '#libs', '#' ])
 
+if not verbose:
+    methods.no_verbose(sys, env)
+
 if debug:
     env.Append(CPPDEFINES=['DEBUG_ENABLED'])
-
-env.Prepend(LIBS=[vulkan_library_name])
-env.Prepend(LIBPATH=[vulkan_lib_path])
 
 Export('env')
 
 """ Script executions """
 SConscript("servers/SCsub")
+SConscript("core/SCsub")
 SConscript("modules/SCsub")
+SConscript("main/SCsub")
 
 # build platform
 SConscript("platforms/" + platform + "/SCsub")

@@ -1,8 +1,16 @@
-VisualServer.cpp
-VisualServer.h
 compat.py
+core/SCsub
+core/VisualServer.cpp
+core/VisualServer.h
+core/hellovulkan.h
+core/mesh.cpp
+core/mesh.h
+core/texture.cpp
+core/texture.h
 hellovulkan.h
-main.cpp
+main/SCsub
+main/main.cpp
+main/main.h
 mainfake.cpp
 mesh.cpp
 mesh.h
@@ -13,10 +21,10 @@ modules/SDL2/sdl_window_server.h
 modules/register_module_types.h
 platforms/windows/SCsub
 platforms/x11/SCsub
+platforms/x11/main.cpp
 servers/SCsub
 servers/window_server.h
 texture.cpp
-texture.h
 thirdparty/SDL2/Xcode-iOS/Demos/src/accelerometer.c
 thirdparty/SDL2/Xcode-iOS/Demos/src/common.c
 thirdparty/SDL2/Xcode-iOS/Demos/src/common.h
@@ -28,8 +36,6 @@ thirdparty/SDL2/Xcode-iOS/Demos/src/rectangles.c
 thirdparty/SDL2/Xcode-iOS/Demos/src/touch.c
 thirdparty/SDL2/Xcode-iOS/Template/SDL iOS Application/main.c
 thirdparty/SDL2/test/torturethread.c
-VisualServer.cpp
-VisualServer.h
 hellovulkan.h
 libs/glm/common.hpp
 libs/glm/detail/_features.hpp
@@ -1846,8 +1852,6 @@ thirdparty/SDL2/include/close_code.h
 thirdparty/SDL2/include/begin_code.h
 Makefile
 SConstruct
-VisualServer.cpp
-VisualServer.h
 hellovulkan.h
 libs/SDL/SDL.h
 libs/SDL/SDL.h

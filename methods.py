@@ -22,6 +22,50 @@ def disable_warnings(self):
     self.Append(CCFLAGS=['-w'])
 
 
+def no_verbose(sys, env):
+
+    colors = {}
+
+    # Colors are disabled in non-TTY environments such as pipes. This means
+    # that if output is redirected to a file, it will not contain color codes
+    if sys.stdout.isatty():
+        colors['cyan'] = '\033[96m'
+        colors['purple'] = '\033[95m'
+        colors['blue'] = '\033[94m'
+        colors['green'] = '\033[92m'
+        colors['yellow'] = '\033[93m'
+        colors['red'] = '\033[91m'
+        colors['end'] = '\033[0m'
+    else:
+        colors['cyan'] = ''
+        colors['purple'] = ''
+        colors['blue'] = ''
+        colors['green'] = ''
+        colors['yellow'] = ''
+        colors['red'] = ''
+        colors['end'] = ''
+
+    compile_source_message = '%sCompiling %s==> %s$SOURCE%s' % (colors['blue'], colors['purple'], colors['yellow'], colors['end'])
+    java_compile_source_message = '%sCompiling %s==> %s$SOURCE%s' % (colors['blue'], colors['purple'], colors['yellow'], colors['end'])
+    compile_shared_source_message = '%sCompiling shared %s==> %s$SOURCE%s' % (colors['blue'], colors['purple'], colors['yellow'], colors['end'])
+    link_program_message = '%sLinking Program        %s==> %s$TARGET%s' % (colors['red'], colors['purple'], colors['yellow'], colors['end'])
+    link_library_message = '%sLinking Static Library %s==> %s$TARGET%s' % (colors['red'], colors['purple'], colors['yellow'], colors['end'])
+    ranlib_library_message = '%sRanlib Library         %s==> %s$TARGET%s' % (colors['red'], colors['purple'], colors['yellow'], colors['end'])
+    link_shared_library_message = '%sLinking Shared Library %s==> %s$TARGET%s' % (colors['red'], colors['purple'], colors['yellow'], colors['end'])
+    java_library_message = '%sCreating Java Archive  %s==> %s$TARGET%s' % (colors['red'], colors['purple'], colors['yellow'], colors['end'])
+
+    env.Append(CXXCOMSTR=[compile_source_message])
+    env.Append(CCCOMSTR=[compile_source_message])
+    env.Append(SHCCCOMSTR=[compile_shared_source_message])
+    env.Append(SHCXXCOMSTR=[compile_shared_source_message])
+    env.Append(ARCOMSTR=[link_library_message])
+    env.Append(RANLIBCOMSTR=[ranlib_library_message])
+    env.Append(SHLINKCOMSTR=[link_shared_library_message])
+    env.Append(LINKCOMSTR=[link_program_message])
+    env.Append(JARCOMSTR=[java_library_message])
+    env.Append(JAVACCOMSTR=[java_compile_source_message])
+
+
 def detect_platoforms():
 
     platforms_list = []
@@ -32,8 +76,8 @@ def detect_platoforms():
     for x in files:
         if not os.path.isdir(x):
             continue
-        x = x.replace("modules\\", "") # win32
-        x = x.replace("modules/", "")  # rest of world
+        x = x.replace("platforms\\", "") # win32
+        x = x.replace("platforms/", "")  # rest of world
         platforms_list.append(x)
 
     return platforms_list

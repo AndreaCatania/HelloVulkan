@@ -1,0 +1,14 @@
+#!/usr/bin/env python
+
+Import('env')
+
+env_main = env.Clone()
+
+Export("env_main")
+
+env_main.main_sources = []
+
+env_main.add_source_files(env_main.main_sources, "*.cpp")
+
+lib = env_main.add_library("main", env_main.main_sources)
+env.Prepend(LIBS=[lib])

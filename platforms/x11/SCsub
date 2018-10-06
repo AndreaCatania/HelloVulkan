@@ -2,20 +2,24 @@
 
 Import('env')
 
-vulkan_lib_path = env.vulkan_SDK_path + r"/lib"
-
-env.Prepend(LIBS=["vulkan"])
-env.Prepend(LIBPATH=[vulkan_lib_path])
-
 executable_name = env.executable_name
+
+# TODO put this inside a module please
+# Define vulkan library
+vulkan_lib_path = env.vulkan_SDK_path + r"/lib"
+vulkan_library_name = "vulkan"
+
+if env.debug:
+    env.Append(CPPDEFINES={'VULKAN_LD_LIBRARY' : 'LD_LIBRARY_PATH=' + vulkan_lib_path})
+    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=' + env.vulkan_SDK_path + '/etc/explicit_layer.d'})
+
+env.Prepend(LIBPATH=[vulkan_lib_path])
+env.Prepend(LIBS=[vulkan_library_name])
+# ~TODO put this inside a module please
 
 if env.debug:
     env.Append(CCFLAGS=['-ggdb'])
     executable_name += '.debug'
 
-    env.Append(CPPDEFINES={'VULKAN_LD_LIBRARY' : 'LD_LIBRARY_PATH=' + vulkan_lib_path})
-    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=' + env.vulkan_SDK_path + '/etc/explicit_layer.d'})
-
 # Compile executable
-env.add_program(env.executable_dir + '/' + executable_name,
-            ['main.cpp', 'mesh.cpp', 'texture.cpp', 'VisualServer.cpp'])
+env.add_program(env.executable_dir + '/' + executable_name, ['main.cpp'])

@@ -33,6 +33,8 @@ excludes = [
 
 thirdparty_sources = methods.detect_files("../../thirdparty/SDL2/src", excludes, ['c', 'cc', 'cpp'])
 
+env_sdl.Append(CPPDEFINES=['__LINUX__'])
+
 # TODO try to use -> "#thirdparty/SDL2/include"
 env_sdl.Append(CPPPATH=["../../thirdparty/SDL2/include"])
 
