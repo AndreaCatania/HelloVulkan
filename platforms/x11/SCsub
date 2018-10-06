@@ -13,8 +13,8 @@ if env.debug:
     env.Append(CPPDEFINES={'VULKAN_LD_LIBRARY' : 'LD_LIBRARY_PATH=' + vulkan_lib_path})
     env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=' + env.vulkan_SDK_path + '/etc/explicit_layer.d'})
 
-env.Prepend(LIBPATH=[vulkan_lib_path])
-env.Prepend(LIBS=[vulkan_library_name])
+env.Append(LIBPATH=[vulkan_lib_path])
+env.Append(LIBS=[vulkan_library_name])
 # ~TODO put this inside a module please
 
 if env.debug:
