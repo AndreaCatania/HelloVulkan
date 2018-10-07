@@ -66,7 +66,7 @@ bool GLFWWindowServer::createSurface(VkInstance p_instance, VkSurfaceKHR *r_surf
 
 bool GLFWWindowServer::poolEvents() {
 	glfwPollEvents();
-	return true;
+	return false;
 }
 
 bool GLFWWindowServer::wantToQuit() const {

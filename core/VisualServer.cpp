@@ -2428,7 +2428,7 @@ bool VisualServer::init() {
 		return false;
 
 	defaultTexture = new Texture(&vulkanServer);
-	state = defaultTexture->load("../../assets/default.png");
+	state = defaultTexture->load("/home/andrea/Workspace/git/HelloVulkan/assets/default.png");
 
 	return state;
 }

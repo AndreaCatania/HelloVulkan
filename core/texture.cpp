@@ -109,6 +109,7 @@ bool Texture::load(const string &p_path) {
 		// cleanup in case of errors
 		clear();
 	}
+	return success;
 }
 
 bool Texture::_createSampler() {

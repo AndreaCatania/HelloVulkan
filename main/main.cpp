@@ -100,7 +100,7 @@ void ready() {
 #if CLOUDY_CUBES_TEST
 
 	texture = new Texture(vm);
-	texture->load("assets/TestText.jpg");
+	texture->load("/home/andrea/Workspace/git/HelloVulkan/assets/TestText.jpg");
 
 	meshes.resize(50);
 	float ballRadius = 20.;
