@@ -5,24 +5,23 @@
 
 #include "VisualServer.h"
 
-Texture::Texture(VisualServer* p_visualServer)
-	: Texture(p_visualServer->getVulkanServer())
+Texture::Texture(VisualServer *p_visualServer) :
+		Texture(p_visualServer->getVulkanServer()) {}
+
+Texture::Texture(VulkanServer *p_vulkanServer) :
+		vulkanServer(p_vulkanServer),
+		image(VK_NULL_HANDLE),
+		imageMemory(VK_NULL_HANDLE),
+		imageView(VK_NULL_HANDLE),
+		imageSampler(VK_NULL_HANDLE),
+		channels_of_image(4) // RGB Alpha
 {}
 
-Texture::Texture(VulkanServer* p_vulkanServer)
-	: vulkanServer(p_vulkanServer)
-	, image(VK_NULL_HANDLE)
-	, imageMemory(VK_NULL_HANDLE)
-	, imageView(VK_NULL_HANDLE)
-	, imageSampler(VK_NULL_HANDLE)
-	, channels_of_image(4) // RGB Alpha
-{}
-
-Texture::~Texture(){
+Texture::~Texture() {
 	clear();
 }
 
-bool Texture::load(const string &p_path){
+bool Texture::load(const string &p_path) {
 
 	clear();
 
@@ -33,17 +32,17 @@ bool Texture::load(const string &p_path){
 	// Load image inside buffer
 	{
 		int real_channels_of_image;
-		unsigned char* imageData = stbi_load(p_path.c_str(), &width, &height, &real_channels_of_image, channels_of_image );
+		unsigned char *imageData = stbi_load(p_path.c_str(), &width, &height, &real_channels_of_image, channels_of_image);
 
-		if(nullptr==imageData){
-			print("[ERROR] Image file can't be loaded, may be corrupted or extension not supported");
+		if (nullptr == imageData) {
+			print("[ERROR] Image file can't be loaded, may be corrupted or extension not supported: " + p_path);
 			return false;
 		}
 
 		VkDeviceSize size = width * height * channels_of_image;
 
 		// Load inside buffer
-		if( !vulkanServer->createImageLoadBuffer(size, imageBuffer, allocation, allocator) ){
+		if (!vulkanServer->createImageLoadBuffer(size, imageBuffer, allocation, allocator)) {
 			print("[ERROR] Failed to create load buffer during image loading");
 			stbi_image_free(imageData);
 			return false;
@@ -59,16 +58,16 @@ bool Texture::load(const string &p_path){
 
 	bool success = false;
 	// Create image
-	if(vulkanServer->createImageTexture(width, height, image, imageMemory)){
+	if (vulkanServer->createImageTexture(width, height, image, imageMemory)) {
 
 		// Create image view
-		if( vulkanServer->createImageViewTexture(image, imageView) ){
+		if (vulkanServer->createImageViewTexture(image, imageView)) {
 
-			if( vulkanServer->transitionImageLayout(image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) ){
+			if (vulkanServer->transitionImageLayout(image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)) {
 
 				// fill image
 				VkCommandBuffer commandBuffer;
-				if( vulkanServer->allocateCommand(commandBuffer) ){
+				if (vulkanServer->allocateCommand(commandBuffer)) {
 					vulkanServer->beginOneTimeCommand(commandBuffer);
 
 					VkBufferImageCopy region = {};
@@ -79,20 +78,20 @@ bool Texture::load(const string &p_path){
 					region.imageSubresource.mipLevel = 0;
 					region.imageSubresource.baseArrayLayer = 0;
 					region.imageSubresource.layerCount = 1;
-					region.imageOffset = {0,0,0};
-					region.imageExtent = {(uint32_t)width, (uint32_t)height, 1};
+					region.imageOffset = { 0, 0, 0 };
+					region.imageExtent = { (uint32_t)width, (uint32_t)height, 1 };
 
 					vkCmdCopyBufferToImage(commandBuffer,
-										   imageBuffer,
-										   image,
-										   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-										   1,
-										   &region);
+							imageBuffer,
+							image,
+							VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							1,
+							&region);
 
-					if( vulkanServer->endCommand(commandBuffer)){
-						if( vulkanServer->submitWaitCommand(commandBuffer)){
-							if( vulkanServer->transitionImageLayout(image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) ){
-								if( _createSampler() ){
+					if (vulkanServer->endCommand(commandBuffer)) {
+						if (vulkanServer->submitWaitCommand(commandBuffer)) {
+							if (vulkanServer->transitionImageLayout(image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)) {
+								if (_createSampler()) {
 									success = true;
 								}
 							}
@@ -106,13 +105,13 @@ bool Texture::load(const string &p_path){
 
 	// Destroy support buffer
 	vulkanServer->destroyBuffer(allocator, imageBuffer, allocation);
-	if( !success ){
+	if (!success) {
 		// cleanup in case of errors
 		clear();
 	}
 }
 
-bool Texture::_createSampler(){
+bool Texture::_createSampler() {
 
 	VkSamplerCreateInfo samplerCreateInfo = {};
 	samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -131,15 +130,15 @@ bool Texture::_createSampler(){
 	return VK_SUCCESS == vkCreateSampler(vulkanServer->device, &samplerCreateInfo, nullptr, &imageSampler);
 }
 
-void Texture::clear(){
-	if(VK_NULL_HANDLE!=imageSampler){
+void Texture::clear() {
+	if (VK_NULL_HANDLE != imageSampler) {
 		vkDestroySampler(vulkanServer->device, imageSampler, nullptr);
 		imageSampler = VK_NULL_HANDLE;
 	}
-	if(VK_NULL_HANDLE!=imageView){
+	if (VK_NULL_HANDLE != imageView) {
 		vulkanServer->destroyImageView(imageView);
 	}
-	if(VK_NULL_HANDLE!=image){
+	if (VK_NULL_HANDLE != image) {
 		vulkanServer->destroyImage(image, imageMemory);
 	}
 }

@@ -2,7 +2,6 @@
 
 import methods
 import sys
-import shaders.shader_builder
 
 executable_name = 'hello_vulkan'
 executable_dir = '#bin'
@@ -51,9 +50,6 @@ if platform == 'windows':
     env.vulkan_glslangValidator_path = vulkan_SDK_path + r"\bin\glslangValidator"
 elif platform == 'x11':
     env.vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
-
-    env.Append(BUILDERS = { 'VULKAN_SHADER_VERT' : env.Builder(action=shaders.shader_builder.build_vulkan_shaders_header, suffix='vert.gen.h', src_suffix='.vert')})
-    env.Append(BUILDERS = { 'VULKAN_SHADER_FRAG' : env.Builder(action=shaders.shader_builder.build_vulkan_shaders_header, suffix='frag.gen.h', src_suffix='.frag')})
 
 """ ~Compile shaders """
 

@@ -10,6 +10,9 @@
 #include <fstream>
 #include <iostream>
 
+#include "shaders/shader_shader_frag.gen.h"
+#include "shaders/shader_shader_vert.gen.h"
+
 #define INITIAL_WINDOW_WIDTH 800
 #define INITIAL_WINDOW_HEIGHT 600
 
@@ -1173,34 +1176,10 @@ void VulkanServer::destroyDescriptorSetLayouts() {
 	}
 }
 
-#define SHADER_VERTEX_PATH "shaders/bin/vert.spv"
-#define SHADER_FRAGMENT_PATH "../shaders/bin/frag.spv"
-
 bool VulkanServer::createGraphicsPipelines() {
 
-	/// Load shaders
-	vector<char> vertexShaderBytecode;
-	vector<char> fragmentShaderBytecode;
-
-	if (!readFile(SHADER_VERTEX_PATH, vertexShaderBytecode)) {
-		print(string("[ERROR] Failed to load shader bytecode: ") +
-				string(SHADER_VERTEX_PATH));
-		return false;
-	}
-
-	if (!readFile(SHADER_FRAGMENT_PATH, fragmentShaderBytecode)) {
-		print(string("[ERROR] Failed to load shader bytecode: ") +
-				string(SHADER_FRAGMENT_PATH));
-		return false;
-	}
-
-	print(string("[INFO] vertex file byte loaded: ") +
-			to_string(vertexShaderBytecode.size()));
-	print(string("[INFO] fragment file byte loaded: ") +
-			to_string(fragmentShaderBytecode.size()));
-
-	vertShaderModule = createShaderModule(vertexShaderBytecode);
-	fragShaderModule = createShaderModule(fragmentShaderBytecode);
+	vertShaderModule = createShaderModule(ShaderShaderVert::code_size, ShaderShaderVert::code);
+	fragShaderModule = createShaderModule(ShaderShaderFrag::code_size, ShaderShaderFrag::code);
 
 	if (vertShaderModule == VK_NULL_HANDLE) {
 		print("[ERROR] Failed to create vertex shader module");
@@ -1407,22 +1386,20 @@ void VulkanServer::destroyGraphicsPipelines() {
 	print("[INFO] shader modules destroyed");
 }
 
-VkShaderModule VulkanServer::createShaderModule(vector<char> &shaderBytecode) {
+VkShaderModule VulkanServer::createShaderModule(size_t p_size, const char *shaderBytecode) {
 
 	VkShaderModuleCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	if (shaderBytecode.size()) {
-		createInfo.codeSize = shaderBytecode.size();
-		createInfo.pCode =
-				reinterpret_cast<const uint32_t *>(shaderBytecode.data());
+	if (p_size) {
+		createInfo.codeSize = p_size;
+		createInfo.pCode = reinterpret_cast<const uint32_t *>(shaderBytecode);
 	} else {
 		createInfo.codeSize = 0;
 		createInfo.pCode = nullptr;
 	}
 
 	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) ==
-			VK_SUCCESS) {
+	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) == VK_SUCCESS) {
 		print("[INFO] shader module created");
 		return shaderModule;
 	} else {
@@ -2442,17 +2419,18 @@ VisualServer::~VisualServer() {}
 
 bool VisualServer::init() {
 
-	if (!createWindow())
+	bool state = createWindow();
+	if (!state)
 		return false;
 
-	const bool vulkanState = vulkanServer.create(window_server);
+	state = vulkanServer.create(window_server);
+	if (!state)
+		return false;
 
-	if (vulkanState) {
-		defaultTexture = new Texture(&vulkanServer);
-		defaultTexture->load("assets/default.png");
-	}
+	defaultTexture = new Texture(&vulkanServer);
+	state = defaultTexture->load("../../assets/default.png");
 
-	return vulkanState;
+	return state;
 }
 
 void VisualServer::terminate() {

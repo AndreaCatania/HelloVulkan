@@ -336,7 +336,7 @@ private:
 	bool createGraphicsPipelines();
 	void destroyGraphicsPipelines();
 
-	VkShaderModule createShaderModule(vector<char> &shaderBytecode);
+	VkShaderModule createShaderModule(size_t p_size, const char *shaderBytecode);
 	void destroyShaderModule(VkShaderModule &shaderModule);
 
 	// The framebuffer object represent the memory that will be used by renderpass

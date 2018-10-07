@@ -28,26 +28,42 @@ def build_vulkan_shader(env, source_path):
     fh.write("class " + class_name + "{\n")
     fh.write("public:\n\n")
 
-    # Add variable
-    fh.write("\tstatic const char code[] = {\n\t\t")
+    characters = 0
 
-    # Copy bytecode generated inside the header
+    # Add code variable
+    fh.write("\tstatic const char code[];\n")
+
+    # Set bytecode inside array
+    bytecode_array = "const char " + class_name + "::code[] = {\n\t\t"
+
     spv_bytecode = open(source_path, "r")
     line = spv_bytecode.readline()
 
     while line:
         for c in line:
-            fh.write(str(ord(c)) + ",")
-        fh.write(str(ord('\n')) + ",")
+            bytecode_array += str(ord(c)) + ","
+            characters += 1
+        bytecode_array += str(ord('\n')) + ","
+        characters += 1
         line = spv_bytecode.readline()
+
+    bytecode_array += str(0) # Instead to remove last comma add a zero
+    characters += 1
 
     spv_bytecode.close()
 
-    # Finalize variable
-    fh.write("\n\t};\n\n")
+    # Finalize code variable
+    bytecode_array += "\n};\n\n"
+
+    # Add code_size variable
+    fh.write("\tstatic const int code_size = " + str(characters) + ";\n\n")
+    # Finalize code_size variable
 
     # Finalize class
-    fh.write("};\n")
+    fh.write("};\n\n")
+
+    fh.write(bytecode_array)
+    fh.write("\n")
 
     fh.close()
 

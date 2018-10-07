@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 
+import shaders.shader_builder
+import methods
+
 Import("env")
 
-env.VULKAN_SHADER_FRAG("shader.frag")
-env.VULKAN_SHADER_VERT("shader.vert")
+# I don't use a builder because I need that it get builded immediately
+shaders_files = methods.detect_files(".", [], ["vert", "frag"])
+for s in shaders_files:
+    shaders.shader_builder.build_vulkan_shader(env, s)
