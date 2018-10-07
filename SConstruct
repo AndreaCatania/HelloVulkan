@@ -2,6 +2,7 @@
 
 import methods
 import sys
+import shaders.shader_builder
 
 executable_name = 'hello_vulkan'
 executable_dir = '#bin'
@@ -36,25 +37,27 @@ if vulkan_SDK_path == "":
     Exit(9553) #Invalid property
 
 
+env = Environment()
+
+
 """ Create directories """
 Execute(Mkdir('bin'))
-Execute(Mkdir('shaders/bin'))
 
 
-""" Compile shaders """
-# TODO please move this inside the SCsub of directory shaders
-vulkan_glslangValidator_path = ""
+""" Set shaders builders"""
+# TODO please make shader compiler part of project
+env.vulkan_glslangValidator_path = ""
 if platform == 'windows':
-    vulkan_glslangValidator_path = vulkan_SDK_path + r"\bin\glslangValidator"
+    env.vulkan_glslangValidator_path = vulkan_SDK_path + r"\bin\glslangValidator"
 elif platform == 'x11':
-    vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
+    env.vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
 
-Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.vert -o ./shaders/bin/vert.spv")
-Execute(vulkan_glslangValidator_path + " -V ./shaders/shader.frag -o ./shaders/bin/frag.spv")
+    env.Append(BUILDERS = { 'VULKAN_SHADER_VERT' : env.Builder(action=shaders.shader_builder.build_vulkan_shaders_header, suffix='vert.gen.h', src_suffix='.vert')})
+    env.Append(BUILDERS = { 'VULKAN_SHADER_FRAG' : env.Builder(action=shaders.shader_builder.build_vulkan_shaders_header, suffix='frag.gen.h', src_suffix='.frag')})
+
 """ ~Compile shaders """
 
 """ Project building """
-env = Environment()
 
 env.executable_name = executable_name
 env.executable_dir = executable_dir
@@ -78,10 +81,12 @@ if not verbose:
 
 if debug:
     env.Append(CPPDEFINES=['DEBUG_ENABLED'])
+    env.Append(CCFLAGS=['-ggdb'])
 
 Export('env')
 
 """ Script executions """
+SConscript("shaders/SCsub")
 SConscript("servers/SCsub")
 SConscript("core/SCsub")
 SConscript("modules/SCsub")

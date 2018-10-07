@@ -2,6 +2,8 @@
 bin/*
 shaders/bin/*
 
+*.gen.*
+
 # Scons cache
 .sconf_temp
 .sconsign.dblite

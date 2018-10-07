@@ -56,13 +56,8 @@ void GLFWWindowServer::appendRequiredExtensions(vector<const char *> &r_extensio
 	uint32_t count = 0;
 	const char **requiredExtensions;
 
-	glfwGetRequiredInstanceExtensions(&count);
-	requiredExtensions = new const char *[count];
-
 	requiredExtensions = glfwGetRequiredInstanceExtensions(&count);
 	r_extensions.insert(r_extensions.end(), &requiredExtensions[0], &requiredExtensions[count]);
-
-	delete[] requiredExtensions;
 }
 
 bool GLFWWindowServer::createSurface(VkInstance p_instance, VkSurfaceKHR *r_surface) {
