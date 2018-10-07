@@ -64,9 +64,10 @@ bool GLFWWindowServer::createSurface(VkInstance p_instance, VkSurfaceKHR *r_surf
 	return VK_SUCCESS == glfwCreateWindowSurface(p_instance, window, nullptr, r_surface);
 }
 
-bool GLFWWindowServer::poolEvents() {
+void GLFWWindowServer::fetchEvents() {
 	glfwPollEvents();
-	return false;
+	if (wantToQuit())
+		set_drawable(false);
 }
 
 bool GLFWWindowServer::wantToQuit() const {

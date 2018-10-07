@@ -14,6 +14,6 @@ public:
 	virtual void appendRequiredExtensions(vector<const char *> &r_extensions) = 0;
 	virtual bool createSurface(VkInstance p_instance, VkSurfaceKHR *r_surface) = 0;
 
-	virtual bool poolEvents() = 0;
+	virtual void fetchEvents() = 0;
 	virtual bool wantToQuit() const = 0;
 };

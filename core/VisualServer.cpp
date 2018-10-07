@@ -2444,13 +2444,7 @@ bool VisualServer::can_step() {
 }
 
 void VisualServer::step() {
-	{
-		while (window_server->poolEvents()) {
-			if (window_server->wantToQuit())
-				window_server->set_drawable(false);
-		}
-	}
-
+	window_server->fetchEvents();
 	vulkanServer.draw();
 }
 
