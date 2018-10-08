@@ -7,6 +7,7 @@
 #include "libs/glm/gtc/random.hpp"
 #include "modules/glfw/glfw_window_server.h"
 
+#define TWO_CUBES_TEST 0
 #define CLOUDY_CUBES_TEST 1
 #define TEXTURE_TEST 0
 #define LOAD_TEST 0
@@ -66,6 +67,14 @@ void cubeMaker(Mesh *mesh) {
 }
 
 glm::mat4 cameraBoom;
+
+#if TWO_CUBES_TEST
+float cameraBoomLenght = 20;
+Mesh *mesh_1;
+Mesh *mesh_2;
+Texture *texture;
+#endif
+
 #if CLOUDY_CUBES_TEST
 float cameraBoomLenght = 20;
 vector<Mesh *> meshes;
@@ -97,6 +106,25 @@ void ready() {
 	glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 0., cameraBoomLenght)));
 	cam.setTransform(cameraBoom * camTransform);
 
+#if TWO_CUBES_TEST
+
+	texture = new Texture(vm);
+	texture->load("/home/andrea/Workspace/git/HelloVulkan/assets/TestText.jpg");
+
+	mesh_1 = new Mesh;
+	mesh_1->setTransform(glm::translate(glm::mat4(1.0), glm::vec3(5, 0, 0)));
+	cubeMaker(mesh_1);
+
+	mesh_2 = new Mesh;
+	mesh_2->setTransform(glm::translate(glm::mat4(1.0), glm::vec3(-5, 0, 0)));
+	mesh_2->setColorTexture(texture);
+	cubeMaker(mesh_2);
+
+	vm->addMesh(mesh_1);
+	vm->addMesh(mesh_2);
+
+#endif
+
 #if CLOUDY_CUBES_TEST
 
 	texture = new Texture(vm);
@@ -117,8 +145,8 @@ void ready() {
 
 #if TEXTURE_TEST
 
-	texture = new Texture(&vm);
-	texture->load("assets/TestText.jpg");
+	texture = new Texture(vm);
+	texture->load("/home/andrea/Workspace/git/HelloVulkan/assets/TestText.jpg");
 
 	triangleMesh = new Mesh;
 	triangleMesh->vertices.push_back(Vertex({ { -1.0f, -1.0f, 1.0f }, { 0., 1. } }));
@@ -131,19 +159,19 @@ void ready() {
 #endif
 
 #if LOAD_TEST
-	texture = new Texture(&vm);
-	texture->load("assets/deagle/ESe_Material__106_color.png");
+	texture = new Texture(vm);
+	texture->load("/home/andrea/Workspace/git/HelloVulkan/assets/deagle/ESe_Material__106_color.png");
 
 	mesh = new Mesh;
 	mesh->loadObj("assets/deagle/ESe.obj");
 	mesh->setColorTexture(texture);
 	vm->addMesh(mesh);
 
-	planeTexture = new Texture(&vm);
-	planeTexture->load("assets/default.png");
+	planeTexture = new Texture(vm);
+	planeTexture->load("/home/andrea/Workspace/git/HelloVulkan/assets/default.png");
 
 	planeMesh = new Mesh;
-	planeMesh->loadObj("assets/quad.obj");
+	planeMesh->loadObj("/home/andrea/Workspace/git/HelloVulkan/assets/quad.obj");
 	planeMesh->setColorTexture(planeTexture);
 	planeMesh->setTransform(glm::rotate(glm::translate(glm::mat4(1.), glm::vec3(-2, 0, 0)), glm::radians(-90.f), glm::vec3(0, 0, 1)));
 	vm->addMesh(planeMesh);
@@ -152,6 +180,16 @@ void ready() {
 }
 
 void exit() {
+
+#if TWO_CUBES_TEST
+	vm->removeMesh(mesh_1);
+	delete mesh_1;
+
+	vm->removeMesh(mesh_2);
+	delete mesh_2;
+
+	delete texture;
+#endif
 
 #if CLOUDY_CUBES_TEST
 	for (int i = meshes.size() - 1; 0 <= i; --i) {
@@ -199,6 +237,7 @@ void tick(float deltaTime) {
 	for (int i = meshes.size() - 1; 0 <= i; --i) {
 		meshes[i]->setTransform(glm::rotate(meshes[i]->getTransform(), deltaTime * glm::radians(90.0f), glm::vec3(1.0f, .0f, .0f)));
 	}
+
 #endif
 
 #if LOAD_TEST
@@ -206,7 +245,6 @@ void tick(float deltaTime) {
 	//glm::mat4 camTransform(glm::translate(glm::mat4(1.), glm::vec3(0., 2., cameraBoomLenght)));
 	//cameraBoom = glm::rotate(cameraBoom, deltaTime * glm::radians(180.f), glm::vec3(0, 1, 0));
 	//cam.lookAt((cameraBoom * camTransform)[3], glm::vec3(0, 0, 0));
-
 #endif
 }
 
