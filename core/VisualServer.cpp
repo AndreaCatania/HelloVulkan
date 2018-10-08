@@ -247,8 +247,8 @@ void VulkanServer::waitIdle() {
 void VulkanServer::draw() {
 
 	if (reloadDrawCommandBuffer) {
-		beginCommandBuffers();
 		reloadDrawCommandBuffer = false;
+		beginCommandBuffers();
 	}
 
 	processCopy();
@@ -431,11 +431,12 @@ void VulkanServer::updateUniformBuffers() {
 	// Update mesh dynamic uniform buffers
 	vmaMapMemory(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBufferAllocation, &data);
 	MeshUniformBufferObject supportMeshUBO;
+	// TODO this is bad approach instead create an array with meshes where is required to update the uniform buffer
 	for (int i = meshes.size() - 1; 0 <= i; --i) {
 		if (!meshes[i]->hasTransformationChange)
 			continue;
 		supportMeshUBO.model = meshes[i]->mesh->transformation;
-		memcpy((MeshUniformBufferObject *)data + meshes[i]->meshUniformBufferOffset * meshDynamicUniformBufferOffset, &supportMeshUBO, sizeof(MeshUniformBufferObject));
+		memcpy(data + meshes[i]->meshUniformBufferOffset * meshDynamicUniformBufferOffset, &supportMeshUBO, sizeof(MeshUniformBufferObject));
 		meshes[i]->hasTransformationChange = false;
 	}
 	vmaUnmapMemory(bufferMemoryHostAllocator, meshUniformBufferData.meshUniformBufferAllocation);
