@@ -10,16 +10,8 @@
 #include "libs/glm/gtc/matrix_transform.hpp"
 
 #include <array>
-#include <cstring>
-#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
-
-using namespace std;
-
-// Defined in main
-void print(string c);
-void print(const char *c);
 
 #endif // HELLOVULKAN_H

@@ -20,7 +20,7 @@ public:
 	virtual bool isDrawable() const;
 	virtual void set_drawable(bool p_state);
 	virtual void getWindowSize(int *r_width, int *r_height);
-	virtual void appendRequiredExtensions(vector<const char *> &r_extensions);
+	virtual void appendRequiredExtensions(std::vector<const char *> &r_extensions);
 	virtual bool createSurface(VkInstance p_instance, VkSurfaceKHR *r_surface);
 
 	virtual void fetchEvents();

@@ -1,5 +1,7 @@
 #include "glfw_window_server.h"
 
+#include "core/error_macros.h"
+
 #define GLFW_INCLUDE_VULKAN
 #include "thirdparty/glfw/include/GLFW/glfw3.h"
 
@@ -16,20 +18,19 @@ void GLFWWindowServer::terminate() {
 }
 
 bool GLFWWindowServer::instanceWindow(const char *p_title, int p_width, int p_height) {
-	if (window) {
-		print(string("[ERROR] [GLFW] Window already exists."));
-		return false;
-	}
+
+	ERR_FAIL_COND_V(window, false);
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 	window = glfwCreateWindow(p_width, p_height, p_title, nullptr, nullptr);
+
 	if (!window) {
 		const char *errorMessage;
 		glfwGetError(&errorMessage);
-		print(string("[ERROR] [GLFW] ") + string(errorMessage));
-		return false;
+		ERR_EXPLAIN(errorMessage);
+		ERR_FAIL_V(false);
 	}
 	return true;
 }
@@ -51,7 +52,7 @@ void GLFWWindowServer::getWindowSize(int *r_width, int *r_height) {
 	glfwGetWindowSize(window, r_width, r_height);
 }
 
-void GLFWWindowServer::appendRequiredExtensions(vector<const char *> &r_extensions) {
+void GLFWWindowServer::appendRequiredExtensions(std::vector<const char *> &r_extensions) {
 
 	uint32_t count = 0;
 	const char **requiredExtensions;

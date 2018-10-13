@@ -4,11 +4,13 @@
 #define VMA_IMPLEMENTATION
 #include "libs/vma/vk_mem_alloc.h"
 
-#include "mesh.h"
+#include "core/error_macros.h"
+#include "core/mesh.h"
+#include "core/print_string.h"
+#include "core/texture.h"
 #include "servers/window_server.h"
-#include "texture.h"
+
 #include <fstream>
-#include <iostream>
 
 #include "shaders/shader_shader_frag.gen.h"
 #include "shaders/shader_shader_vert.gen.h"
@@ -26,9 +28,9 @@
 const glm::mat4 VulkanServer::COORDSYSTEMROTATOR =
 		glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3(0.f, 0.f, 1.f));
 
-bool readFile(const string &filename, vector<char> &r_out) {
+bool readFile(const std::string &filename, std::vector<char> &r_out) {
 	// Read the file from the bottom in binary
-	ifstream file(filename, ios::ate | ios::binary);
+	std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
 	if (!file.is_open()) {
 		return false;
@@ -44,11 +46,16 @@ bool readFile(const string &filename, vector<char> &r_out) {
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
-		VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objType,
-		uint64_t obj, size_t location, int32_t code, const char *layerPrefix,
-		const char *msg, void *userData) {
+		VkDebugReportFlagsEXT flags,
+		VkDebugReportObjectTypeEXT objType,
+		uint64_t obj,
+		size_t location,
+		int32_t code,
+		const char *layerPrefix,
+		const char *msg,
+		void *userData) {
 
-	print(string("[VL ] ") + string(msg));
+	print_line(std::string("[VL ] ") + std::string(msg));
 
 	return VK_FALSE;
 }
@@ -285,10 +292,12 @@ void VulkanServer::draw() {
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &renderFinishedSemaphores[imageIndex];
 
-	if (VK_SUCCESS != vkQueueSubmit(graphicsQueue, 1, &submitInfo, drawFinishFences[imageIndex])) {
-		print("[ERROR not handled] Error during queue submission");
-		return;
-	}
+	ERR_FAIL_COND(
+			VK_SUCCESS != vkQueueSubmit(
+								  graphicsQueue,
+								  1,
+								  &submitInfo,
+								  drawFinishFences[imageIndex]));
 
 	// Present
 	VkPresentInfoKHR presInfo = {};
@@ -310,10 +319,7 @@ void VulkanServer::draw() {
 
 void VulkanServer::addMesh(Mesh *p_mesh) {
 
-	if (meshUniformBufferData.count >= meshUniformBufferData.size) {
-		print("[ERROR] Max mesh limit reached, can't add more meshes");
-		return;
-	}
+	ERR_FAIL_COND(meshUniformBufferData.count >= meshUniformBufferData.size);
 
 	if (p_mesh->meshHandle)
 		return;
@@ -386,15 +392,8 @@ void VulkanServer::processCopy() {
 			vkCmdUpdateBuffer(copyCommandBuffer, meshesCopyPending[m]->indexBuffer, 0, meshesCopyPending[m]->indicesSize, meshesCopyPending[m]->mesh->triangles.data());
 		}
 
-		if (!endCommand(copyCommandBuffer)) {
-			print("[ERROR] Copy command buffer ending failed");
-			return;
-		}
-
-		if (!submitCommand(copyCommandBuffer, copyFinishFence)) {
-			print("[ERROR] Copy command buffer submission failed");
-			return;
-		}
+		ERR_FAIL_COND(!endCommand(copyCommandBuffer));
+		ERR_FAIL_COND(!submitCommand(copyCommandBuffer, copyFinishFence));
 
 		meshesCopyInProgress.insert(meshesCopyInProgress.end(), meshesCopyPending.begin(), meshesCopyPending.end());
 		meshesCopyPending.clear();
@@ -458,7 +457,7 @@ bool VulkanServer::createImageViewTexture(VkImage p_image, VkImageView &r_imageV
 
 bool VulkanServer::createInstance() {
 
-	print("Instancing Vulkan");
+	print_line("Instancing Vulkan");
 
 	// Create instance
 	VkApplicationInfo appInfo = {};
@@ -474,7 +473,7 @@ bool VulkanServer::createInstance() {
 	createInfo.pApplicationInfo = &appInfo;
 
 	layers.clear();
-	vector<const char *> requiredExtensions;
+	std::vector<const char *> requiredExtensions;
 
 	if (enableValidationLayer()) {
 		layers.push_back("VK_LAYER_LUNARG_standard_validation");
@@ -500,13 +499,9 @@ bool VulkanServer::createInstance() {
 
 	VkResult res = vkCreateInstance(&createInfo, nullptr, &instance);
 
-	if (VK_SUCCESS == res) {
-		print("Instancing Vulkan success");
-		return true;
-	} else {
-		std::cout << "[ERROR] Instancing error: " << res << std::endl;
-		return false;
-	}
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
+	print_line("Instancing Vulkan success");
+	return true;
 }
 
 void VulkanServer::destroyInstance() {
@@ -514,7 +509,7 @@ void VulkanServer::destroyInstance() {
 		return;
 	vkDestroyInstance(instance, nullptr);
 	instance = VK_NULL_HANDLE;
-	print("[INFO] Vulkan instance destroyed");
+	print_line("Vulkan instance destroyed");
 }
 
 bool VulkanServer::createDebugCallback() {
@@ -528,19 +523,13 @@ bool VulkanServer::createDebugCallback() {
 
 	// Load the extension function to create the callback
 	PFN_vkCreateDebugReportCallbackEXT func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
-	if (!func) {
-		print("[Error] Can't load function to create debug callback");
-		return false;
-	}
+	ERR_FAIL_COND_V(!func, false);
 
 	VkResult res = func(instance, &createInfo, nullptr, &debugCallback);
-	if (res == VK_SUCCESS) {
-		print("[INFO] Debug callback loaded");
-		return true;
-	} else {
-		print("[ERROR] debug callback not created");
-		return false;
-	}
+	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
+
+	print_line("Debug callback loaded");
+	return true;
 }
 
 void VulkanServer::destroyDebugCallback() {
@@ -548,25 +537,16 @@ void VulkanServer::destroyDebugCallback() {
 		return;
 
 	PFN_vkDestroyDebugReportCallbackEXT func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
-	if (!func) {
-		print("[ERROR] Destroy functin not loaded");
-		return;
-	}
+	ERR_FAIL_COND(!func);
 
 	func(instance, debugCallback, nullptr);
 	debugCallback = VK_NULL_HANDLE;
-	print("[INFO] Debug callback destroyed");
+	print_line("Debug callback destroyed");
 }
 
 bool VulkanServer::createSurface() {
 
-	if (window->createSurface(instance, &surface)) {
-		print("[INFO] surface created");
-		return true;
-	} else {
-		print("[ERROR] surface not created");
-		return false;
-	}
+	ERR_FAIL_COND_V(!window->createSurface(instance, &surface), false);
 }
 
 void VulkanServer::destroySurface() {
@@ -581,24 +561,34 @@ bool VulkanServer::pickPhysicalDevice() {
 	uint32_t availableDevicesCount = 0;
 	vkEnumeratePhysicalDevices(instance, &availableDevicesCount, nullptr);
 
-	if (0 == availableDevicesCount) {
-		print("[Error] No devices that supports Vulkan");
-		return false;
-	}
-	vector<VkPhysicalDevice> availableDevices(availableDevicesCount);
-	vkEnumeratePhysicalDevices(instance, &availableDevicesCount, availableDevices.data());
+	ERR_FAIL_COND_V(0 == availableDevicesCount, false);
+
+	std::vector<VkPhysicalDevice> availableDevices(availableDevicesCount);
+	vkEnumeratePhysicalDevices(
+			instance,
+			&availableDevicesCount,
+			availableDevices.data());
 
 	VkPhysicalDeviceProperties deviceProps;
 
-	int id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU, &deviceProps);
+	int id = autoSelectPhysicalDevice(
+			availableDevices,
+			VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU,
+			&deviceProps);
+
 	if (id < 0) {
-		id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU, &deviceProps);
+		id = autoSelectPhysicalDevice(
+				availableDevices,
+				VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,
+				&deviceProps);
+
 		if (id < 0) {
-			id = autoSelectPhysicalDevice(availableDevices, VK_PHYSICAL_DEVICE_TYPE_CPU, &deviceProps);
-			if (id < 0) {
-				print("[Error] No suitable device");
-				return false;
-			}
+			id = autoSelectPhysicalDevice(
+					availableDevices,
+					VK_PHYSICAL_DEVICE_TYPE_CPU,
+					&deviceProps);
+
+			ERR_FAIL_COND_V(id < 0, false);
 		}
 	}
 
@@ -607,7 +597,7 @@ bool VulkanServer::pickPhysicalDevice() {
 	physicalDeviceMinUniformBufferOffsetAlignment =
 			deviceProps.limits.minUniformBufferOffsetAlignment;
 
-	print("[INFO] Physical Device selected");
+	print_line("Physical Device selected");
 	return true;
 }
 
@@ -616,7 +606,7 @@ bool VulkanServer::createLogicalDevice() {
 	float priority = 1.f;
 
 	QueueFamilyIndices queueIndices = findQueueFamilies(physicalDevice);
-	vector<VkDeviceQueueCreateInfo> queueCreateInfoArray;
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfoArray;
 
 	VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
 	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -658,15 +648,15 @@ bool VulkanServer::createLogicalDevice() {
 		deviceCreateInfos.enabledLayerCount = 0;
 	}
 
-	VkResult res =
-			vkCreateDevice(physicalDevice, &deviceCreateInfos, nullptr, &device);
-	if (res == VK_SUCCESS) {
-		print("[INFO] Local device created");
-		return true;
-	} else {
-		print("[ERROR] Logical device creation failed");
-		return false;
-	}
+	VkResult res = vkCreateDevice(
+			physicalDevice,
+			&deviceCreateInfos,
+			nullptr,
+			&device);
+
+	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
+	print_line("Local device created");
+	return true;
 }
 
 void VulkanServer::destroyLogicalDevice() {
@@ -674,7 +664,7 @@ void VulkanServer::destroyLogicalDevice() {
 		return;
 	vkDestroyDevice(device, nullptr);
 	device = VK_NULL_HANDLE;
-	print("[INFO] Local device destroyed");
+	print_line("Local device destroyed");
 }
 
 void VulkanServer::lockupDeviceQueue() {
@@ -690,7 +680,7 @@ void VulkanServer::lockupDeviceQueue() {
 		presentationQueue = graphicsQueue;
 	}
 
-	print("[INFO] Device queue lockup success");
+	print_line("Device queue lockup success");
 }
 
 VulkanServer::QueueFamilyIndices
@@ -704,7 +694,7 @@ VulkanServer::findQueueFamilies(VkPhysicalDevice p_device) {
 	if (queueCounts <= 0)
 		return indices;
 
-	vector<VkQueueFamilyProperties> queueProperties(queueCounts);
+	std::vector<VkQueueFamilyProperties> queueProperties(queueCounts);
 	vkGetPhysicalDeviceQueueFamilyProperties(p_device, &queueCounts, queueProperties.data());
 
 	for (int i = queueProperties.size() - 1; 0 <= i; --i) {
@@ -749,7 +739,7 @@ VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(VkPhys
 	return chainDetails;
 }
 
-VkSurfaceFormatKHR VulkanServer::chooseSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats) {
+VkSurfaceFormatKHR VulkanServer::chooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &p_formats) {
 	// If the surface has not a preferred format
 	// That is the best case.
 	// It will return just a format with format field set to VK_FORMAT_UNDEFINED
@@ -772,7 +762,7 @@ VkSurfaceFormatKHR VulkanServer::chooseSurfaceFormat(const vector<VkSurfaceForma
 	return p_formats[0]; // TODO create an algorithm to pick the best format
 }
 
-VkPresentModeKHR VulkanServer::choosePresentMode(const vector<VkPresentModeKHR> &p_modes) {
+VkPresentModeKHR VulkanServer::choosePresentMode(const std::vector<VkPresentModeKHR> &p_modes) {
 
 	// This is guaranteed to be supported, but doesn't works so good
 	VkPresentModeKHR bestMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -796,12 +786,17 @@ VkExtent2D VulkanServer::chooseExtent(const VkSurfaceCapabilitiesKHR &capabiliti
 	window->getWindowSize(&width, &height);
 	VkExtent2D actualExtent = { (uint32_t)width, (uint32_t)height };
 
-	actualExtent.width =
-			max(capabilities.minImageExtent.width,
-					min(capabilities.maxImageExtent.width, actualExtent.width));
-	actualExtent.height =
-			max(capabilities.minImageExtent.height,
-					min(capabilities.maxImageExtent.height, actualExtent.height));
+	actualExtent.width = MAX(
+			capabilities.minImageExtent.width,
+			MIN(
+					capabilities.maxImageExtent.width,
+					actualExtent.width));
+
+	actualExtent.height = MAX(
+			capabilities.minImageExtent.height,
+			MIN(
+					capabilities.maxImageExtent.height,
+					actualExtent.height));
 
 	return actualExtent;
 }
@@ -853,7 +848,7 @@ bool VulkanServer::createRawSwapchain() {
 	// Check it we can use triple buffer
 	++imageCount;
 	if (chainDetails.capabilities.maxImageCount > 0) // 0 means no limits
-		imageCount = min(imageCount, chainDetails.capabilities.maxImageCount);
+		imageCount = MIN(imageCount, chainDetails.capabilities.maxImageCount);
 
 	VkSwapchainCreateInfoKHR chainCreate = {};
 	chainCreate.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -891,17 +886,18 @@ bool VulkanServer::createRawSwapchain() {
 	chainCreate.clipped = VK_TRUE;
 	chainCreate.oldSwapchain = VK_NULL_HANDLE;
 
-	VkResult res =
-			vkCreateSwapchainKHR(device, &chainCreate, nullptr, &swapchain);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Swap chain creation fail");
-		return false;
-	}
+	VkResult res = vkCreateSwapchainKHR(
+			device,
+			&chainCreate,
+			nullptr,
+			&swapchain);
+
+	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
 
 	swapchainImageFormat = format.format;
 	swapchainExtent = extent2D;
 
-	print("[INFO] Created swap chain");
+	print_line("Created swap chain");
 	return true;
 }
 
@@ -910,18 +906,23 @@ void VulkanServer::destroyRawSwapchain() {
 		return;
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
-	print("[INFO] swapchain destroyed");
+	print_line("swapchain destroyed");
 }
 
 void VulkanServer::lockupSwapchainImages() {
 
 	uint32_t imagesCount = 0;
 	vkGetSwapchainImagesKHR(device, swapchain, &imagesCount, nullptr);
+
 	swapchainImages.resize(imagesCount);
-	vkGetSwapchainImagesKHR(device, swapchain, &imagesCount,
+
+	vkGetSwapchainImagesKHR(
+			device,
+			swapchain,
+			&imagesCount,
 			swapchainImages.data());
 
-	print("[INFO] swapchain images lockup success");
+	print_line("Swapchain images lockup success");
 }
 
 bool VulkanServer::createSwapchainImageViews() {
@@ -938,13 +939,10 @@ bool VulkanServer::createSwapchainImageViews() {
 		}
 	}
 
-	if (error) {
-		print("[ERROR] Error during creation of Immage Views");
-		return false;
-	} else {
-		print("[INFO] All image view created");
-		return true;
-	}
+	ERR_FAIL_COND_V(error, false);
+
+	print_line("All image view created");
+	return true;
 }
 
 void VulkanServer::destroySwapchainImageViews() {
@@ -956,35 +954,43 @@ void VulkanServer::destroySwapchainImageViews() {
 		destroyImageView(swapchainImageViews[i]);
 	}
 	swapchainImageViews.clear();
-	print("[INFO] Destroyed image views");
+	print_line("Destroyed image views");
 }
 
 bool VulkanServer::createDepthTestResources() {
 
 	VkFormat depthFormat = findBestDepthFormat();
 
-	if (!createImage(
-				swapchainExtent.width, swapchainExtent.height, depthFormat,
-				VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory)) {
-		print("[ERROR] Image not create");
-		return false;
-	}
+	bool s;
+	s = createImage(
+			swapchainExtent.width,
+			swapchainExtent.height,
+			depthFormat,
+			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			depthImage,
+			depthImageMemory);
 
-	if (!createImageView(depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT,
-				depthImageView)) {
-		print("[ERROR] Failed to create depth image view");
-		return false;
-	}
+	ERR_FAIL_COND_V(!s, false);
 
-	if (!transitionImageLayout(
-				depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED,
-				VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)) {
-		print("[ERROR] Failed to change image layout");
-		return true;
-	}
+	s = createImageView(
+			depthImage,
+			depthFormat,
+			VK_IMAGE_ASPECT_DEPTH_BIT,
+			depthImageView);
 
-	print("[INFO] Depth test resources created");
+	ERR_FAIL_COND_V(!s, false);
+
+	s = transitionImageLayout(
+			depthImage,
+			depthFormat,
+			VK_IMAGE_LAYOUT_UNDEFINED,
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+
+	ERR_FAIL_COND_V(!s, false);
+
+	print_line("Depth test resources created");
 	return true;
 }
 
@@ -992,7 +998,7 @@ void VulkanServer::destroyDepthTestResources() {
 
 	destroyImageView(depthImageView);
 	destroyImage(depthImage, depthImageMemory);
-	print("[INFO] Depth test resources destroyed");
+	print_line("Depth test resources destroyed");
 }
 
 bool VulkanServer::createRenderPass() {
@@ -1061,14 +1067,10 @@ bool VulkanServer::createRenderPass() {
 	renderPassCreateInfo.dependencyCount = 1;
 	renderPassCreateInfo.pDependencies = &dependency;
 
-	VkResult res =
-			vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass);
-	if (VK_SUCCESS != res) {
-		print("[ERROR] Render pass creation fail");
-		return false;
-	}
+	VkResult res = vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass);
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print("[INFO] Render pass created");
+	print_line("Render pass created");
 	return true;
 }
 
@@ -1098,82 +1100,83 @@ bool VulkanServer::createDescriptorSetLayouts() {
 		layoutCreateInfo.pBindings = &cameraDescriptorBinding;
 
 		VkResult res = vkCreateDescriptorSetLayout(
-				device, &layoutCreateInfo, nullptr, &cameraDescriptorSetLayout);
-		if (VK_SUCCESS != res) {
-			print("[ERROR] Error during creation of camera descriptor layout");
-			return false;
-		}
+				device,
+				&layoutCreateInfo,
+				nullptr,
+				&cameraDescriptorSetLayout);
+		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
 	{
 		// Mesh dynamic uniform buffer
 		VkDescriptorSetLayoutBinding meshesDescriptorBinding = {};
 		meshesDescriptorBinding.binding = 0;
-		meshesDescriptorBinding.descriptorType =
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		meshesDescriptorBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		meshesDescriptorBinding.descriptorCount = 1;
 		meshesDescriptorBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 		VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
-		layoutCreateInfo.sType =
-				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 		layoutCreateInfo.bindingCount = 1;
 		layoutCreateInfo.pBindings = &meshesDescriptorBinding;
 
 		VkResult res = vkCreateDescriptorSetLayout(
-				device, &layoutCreateInfo, nullptr, &meshesDescriptorSetLayout);
-		if (VK_SUCCESS != res) {
-			print("[ERROR] Error during creation of meshes descriptor layout");
-			return false;
-		}
+				device,
+				&layoutCreateInfo,
+				nullptr,
+				&meshesDescriptorSetLayout);
+
+		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
 	{
 		// Image + Sampler image set layout
 		VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
 		samplerLayoutBinding.binding = 0;
-		samplerLayoutBinding.descriptorType =
-				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		samplerLayoutBinding.descriptorCount = 1;
 		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
 		VkDescriptorSetLayoutCreateInfo layoutCreateInfo = {};
-		layoutCreateInfo.sType =
-				VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 		layoutCreateInfo.bindingCount = 1;
 		layoutCreateInfo.pBindings = &samplerLayoutBinding;
 
 		VkResult res = vkCreateDescriptorSetLayout(
-				device, &layoutCreateInfo, nullptr, &meshImagesDescriptorSetLayout);
-		if (VK_SUCCESS != res) {
-			print("[ERROR] Error during creation of image descriptor layout");
-			return false;
-		}
+				device,
+				&layoutCreateInfo,
+				nullptr,
+				&meshImagesDescriptorSetLayout);
+
+		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
-	print("[INFO] Uniform descriptors layouts created");
+	print_line("Uniform descriptors layouts created");
 	return true;
 }
 
 void VulkanServer::destroyDescriptorSetLayouts() {
 
 	if (VK_NULL_HANDLE != meshImagesDescriptorSetLayout) {
-		vkDestroyDescriptorSetLayout(device, meshImagesDescriptorSetLayout,
+		vkDestroyDescriptorSetLayout(
+				device,
+				meshImagesDescriptorSetLayout,
 				nullptr);
+
 		meshImagesDescriptorSetLayout = VK_NULL_HANDLE;
-		print("[INFO] Image descriptor layout destroyed");
+		print_line("Image descriptor layout destroyed");
 	}
 
 	if (VK_NULL_HANDLE != meshesDescriptorSetLayout) {
 		vkDestroyDescriptorSetLayout(device, meshesDescriptorSetLayout, nullptr);
 		meshesDescriptorSetLayout = VK_NULL_HANDLE;
-		print("[INFO] Meshe uniform descriptor destroyed");
+		print_line("Meshe uniform descriptor destroyed");
 	}
 
 	if (VK_NULL_HANDLE != cameraDescriptorSetLayout) {
 		vkDestroyDescriptorSetLayout(device, cameraDescriptorSetLayout, nullptr);
 		cameraDescriptorSetLayout = VK_NULL_HANDLE;
-		print("[INFO] camera uniform descriptor destroyed");
+		print_line("camera uniform descriptor destroyed");
 	}
 }
 
@@ -1182,17 +1185,10 @@ bool VulkanServer::createGraphicsPipelines() {
 	vertShaderModule = createShaderModule(ShaderShaderVert::code_size, ShaderShaderVert::code);
 	fragShaderModule = createShaderModule(ShaderShaderFrag::code_size, ShaderShaderFrag::code);
 
-	if (vertShaderModule == VK_NULL_HANDLE) {
-		print("[ERROR] Failed to create vertex shader module");
-		return false;
-	}
+	ERR_FAIL_COND_V(vertShaderModule == VK_NULL_HANDLE, false);
+	ERR_FAIL_COND_V(fragShaderModule == VK_NULL_HANDLE, false);
 
-	if (fragShaderModule == VK_NULL_HANDLE) {
-		print("[ERROR] Failed to create fragment shader module");
-		return false;
-	}
-
-	vector<VkPipelineShaderStageCreateInfo> shaderStages;
+	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 	{
 		VkPipelineShaderStageCreateInfo vertStageCreateInfo = {};
 		vertStageCreateInfo.sType =
@@ -1218,28 +1214,30 @@ bool VulkanServer::createGraphicsPipelines() {
 
 	VkVertexInputBindingDescription vertexInputBindingDescription =
 			Vertex::getBindingDescription();
+
 	vertexInputCreateInfo.vertexBindingDescriptionCount = 1;
+
 	vertexInputCreateInfo.pVertexBindingDescriptions =
 			&vertexInputBindingDescription;
 
-	array<VkVertexInputAttributeDescription, 2> vertexInputAttributesDescription =
+	std::array<VkVertexInputAttributeDescription, 2> vertexInputAttributesDescription =
 			Vertex::getAttributesDescription();
+
 	vertexInputCreateInfo.vertexAttributeDescriptionCount =
 			vertexInputAttributesDescription.size();
+
 	vertexInputCreateInfo.pVertexAttributeDescriptions =
 			vertexInputAttributesDescription.data();
 
 	/// Input Assembly
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo = {};
-	inputAssemblyCreateInfo.sType =
-			VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+	inputAssemblyCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
 	inputAssemblyCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	inputAssemblyCreateInfo.primitiveRestartEnable = VK_FALSE;
 
 	/// Viewport
 	VkPipelineViewportStateCreateInfo viewportCreateInfo = {};
-	viewportCreateInfo.sType =
-			VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
 
 	VkViewport viewport = {};
 	viewport.x = .0;
@@ -1327,11 +1325,13 @@ bool VulkanServer::createGraphicsPipelines() {
 		layoutCreateInfo.setLayoutCount = 3;
 		layoutCreateInfo.pSetLayouts = layouts;
 
-		if (VK_SUCCESS != vkCreatePipelineLayout(device, &layoutCreateInfo, nullptr,
-								  &pipelineLayout)) {
-			print("[ERROR] Failed to create pipeline layout");
-			return false;
-		}
+		ERR_FAIL_COND_V(
+				VK_SUCCESS != vkCreatePipelineLayout(
+									  device,
+									  &layoutCreateInfo,
+									  nullptr,
+									  &pipelineLayout),
+				false);
 	}
 
 	/// Create pipeline
@@ -1353,15 +1353,17 @@ bool VulkanServer::createGraphicsPipelines() {
 	pipelineCreateInfo.renderPass = renderPass;
 	pipelineCreateInfo.subpass = 0;
 
-	VkResult res =
-			vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineCreateInfo,
-					nullptr, &graphicsPipeline);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Pipeline creation failed");
-		return false;
-	}
+	VkResult res = vkCreateGraphicsPipelines(
+			device,
+			VK_NULL_HANDLE,
+			1,
+			&pipelineCreateInfo,
+			nullptr,
+			&graphicsPipeline);
 
-	print("[INFO] Pipeline created");
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
+
+	print_line("Pipeline created");
 	return true;
 }
 
@@ -1370,13 +1372,13 @@ void VulkanServer::destroyGraphicsPipelines() {
 	if (graphicsPipeline != VK_NULL_HANDLE) {
 		vkDestroyPipeline(device, graphicsPipeline, nullptr);
 		graphicsPipeline = VK_NULL_HANDLE;
-		print("[INFO] pipeline destroyed");
+		print_line("pipeline destroyed");
 	}
 
 	if (pipelineLayout != VK_NULL_HANDLE) {
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 		pipelineLayout = VK_NULL_HANDLE;
-		print("[INFO] pipeline layout destroyed ");
+		print_line("pipeline layout destroyed");
 	}
 
 	destroyShaderModule(vertShaderModule);
@@ -1384,7 +1386,7 @@ void VulkanServer::destroyGraphicsPipelines() {
 	vertShaderModule = VK_NULL_HANDLE;
 	fragShaderModule = VK_NULL_HANDLE;
 
-	print("[INFO] shader modules destroyed");
+	print_line("shader modules destroyed");
 }
 
 VkShaderModule VulkanServer::createShaderModule(size_t p_size, const char *shaderBytecode) {
@@ -1401,7 +1403,7 @@ VkShaderModule VulkanServer::createShaderModule(size_t p_size, const char *shade
 
 	VkShaderModule shaderModule;
 	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) == VK_SUCCESS) {
-		print("[INFO] shader module created");
+		print_line("Shader module created");
 		return shaderModule;
 	} else {
 		return VK_NULL_HANDLE;
@@ -1414,7 +1416,7 @@ void VulkanServer::destroyShaderModule(VkShaderModule &shaderModule) {
 
 	vkDestroyShaderModule(device, shaderModule, nullptr);
 	shaderModule = VK_NULL_HANDLE;
-	print("[INFO] shader module destroyed");
+	print_line("Shader module destroyed");
 }
 
 bool VulkanServer::createFramebuffers() {
@@ -1447,7 +1449,7 @@ bool VulkanServer::createFramebuffers() {
 		}
 	}
 
-	print("[INFO] Framebuffers created");
+	print_line("Framebuffers created");
 	return true;
 }
 
@@ -1469,14 +1471,12 @@ bool VulkanServer::createBufferMemoryDeviceAllocator() {
 	VmaAllocatorCreateInfo allocatorCreateInfo = {};
 	allocatorCreateInfo.physicalDevice = physicalDevice;
 	allocatorCreateInfo.device = device;
-	allocatorCreateInfo.preferredLargeHeapBlockSize =
-			1ull * 1024 * 1024 * 1024; // 1 GB
+	allocatorCreateInfo.preferredLargeHeapBlockSize = 1ull * 1024 * 1024 * 1024; // 1 GB
 
-	if (VK_SUCCESS !=
-			vmaCreateAllocator(&allocatorCreateInfo, &bufferMemoryDeviceAllocator)) {
-		print("[ERROR] Vertex buffer creation of VMA allocator failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vmaCreateAllocator(&allocatorCreateInfo,
+								  &bufferMemoryDeviceAllocator),
+			false);
 
 	return true;
 }
@@ -1492,11 +1492,11 @@ bool VulkanServer::createBufferMemoryHostAllocator() {
 	allocatorCreateInfo.physicalDevice = physicalDevice;
 	allocatorCreateInfo.device = device;
 
-	if (VK_SUCCESS !=
-			vmaCreateAllocator(&allocatorCreateInfo, &bufferMemoryHostAllocator)) {
-		print("[ERROR] Vertex buffer creation of VMA allocator failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vmaCreateAllocator(
+								  &allocatorCreateInfo,
+								  &bufferMemoryHostAllocator),
+			false);
 
 	return true;
 }
@@ -1527,14 +1527,16 @@ int32_t VulkanServer::chooseMemoryType(uint32_t p_typeBits,
 
 bool VulkanServer::createUniformBuffers() {
 
-	if (!createBuffer(bufferMemoryHostAllocator, sizeof(SceneUniformBufferObject),
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VK_SHARING_MODE_EXCLUSIVE, VMA_MEMORY_USAGE_CPU_TO_GPU,
-				sceneUniformBuffer, sceneUniformBufferAllocation)) {
-
-		print("[ERROR] Scene uniform buffer allocation failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			!createBuffer(
+					bufferMemoryHostAllocator,
+					sizeof(SceneUniformBufferObject),
+					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					VK_SHARING_MODE_EXCLUSIVE,
+					VMA_MEMORY_USAGE_CPU_TO_GPU,
+					sceneUniformBuffer,
+					sceneUniformBufferAllocation),
+			false);
 
 	// The below line of code is a bit operation that take correct multiple of
 	// physicalDeviceMinUniformBufferOffsetAlignment to use as alingment offset It
@@ -1550,21 +1552,21 @@ bool VulkanServer::createUniformBuffers() {
 					physicalDeviceMinUniformBufferOffsetAlignment - 1) &
 			~(physicalDeviceMinUniformBufferOffsetAlignment - 1);
 
-	if (!createBuffer(bufferMemoryHostAllocator,
-				meshDynamicUniformBufferOffset * MAX_MESH_COUNT,
-				VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-				VK_SHARING_MODE_EXCLUSIVE, VMA_MEMORY_USAGE_CPU_TO_GPU,
-				meshUniformBufferData.meshUniformBuffer,
-				meshUniformBufferData.meshUniformBufferAllocation)) {
-
-		print("[ERROR] Mesh uniform buffer allocation failed, mesh not added");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			!createBuffer(
+					bufferMemoryHostAllocator,
+					meshDynamicUniformBufferOffset * MAX_MESH_COUNT,
+					VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+					VK_SHARING_MODE_EXCLUSIVE,
+					VMA_MEMORY_USAGE_CPU_TO_GPU,
+					meshUniformBufferData.meshUniformBuffer,
+					meshUniformBufferData.meshUniformBufferAllocation),
+			false);
 
 	meshUniformBufferData.size = MAX_MESH_COUNT;
 	meshUniformBufferData.count = 0;
 
-	print("[INFO] uniform buffers allocation success");
+	print_line("uniform buffers allocation success");
 	return true;
 }
 
@@ -1574,7 +1576,7 @@ void VulkanServer::destroyUniformBuffers() {
 			meshUniformBufferData.meshUniformBufferAllocation);
 	destroyBuffer(bufferMemoryHostAllocator, sceneUniformBuffer,
 			sceneUniformBufferAllocation);
-	print("[INFO] All buffers was freed");
+	print_line("All buffers was freed");
 }
 
 bool VulkanServer::createUniformPools() {
@@ -1590,12 +1592,13 @@ bool VulkanServer::createUniformPools() {
 		poolCreateInfo.pPoolSizes = &poolSize;
 		poolCreateInfo.maxSets = 1;
 
-		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr,
+		VkResult res = vkCreateDescriptorPool(
+				device,
+				&poolCreateInfo,
+				nullptr,
 				&cameraDescriptorPool);
-		if (res != VK_SUCCESS) {
-			print("[ERROR] Error during creation of camera descriptor pool");
-			return false;
-		}
+
+		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
 	{ // Per Mesh uniform buffer pool
@@ -1610,12 +1613,13 @@ bool VulkanServer::createUniformPools() {
 		poolCreateInfo.pPoolSizes = &poolSize;
 		poolCreateInfo.maxSets = 1;
 
-		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr,
+		VkResult res = vkCreateDescriptorPool(
+				device,
+				&poolCreateInfo,
+				nullptr,
 				&meshesDescriptorPool);
-		if (res != VK_SUCCESS) {
-			print("[ERROR] Error during creation of meshes descriptor pool");
-			return false;
-		}
+
+		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
 	{ // Per image uniform buffer pool
@@ -1631,15 +1635,16 @@ bool VulkanServer::createUniformPools() {
 		poolCreateInfo.pPoolSizes = &poolSize;
 		poolCreateInfo.maxSets = MAX_MESH_COUNT;
 
-		VkResult res = vkCreateDescriptorPool(device, &poolCreateInfo, nullptr,
+		VkResult res = vkCreateDescriptorPool(
+				device,
+				&poolCreateInfo,
+				nullptr,
 				&meshImagesDescriptorPool);
-		if (res != VK_SUCCESS) {
-			print("[ERROR] Error during creation of meshes descriptor pool");
-			return false;
-		}
+
+		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
-	print("[INFO] Uniform pools created");
+	print_line("Uniform pools created");
 	return true;
 }
 
@@ -1647,18 +1652,18 @@ void VulkanServer::destroyUniformPools() {
 	if (meshImagesDescriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, meshImagesDescriptorPool, nullptr);
 		meshImagesDescriptorPool = VK_NULL_HANDLE;
-		print("[INFO] Mesh images uniform pool destroyed");
+		print_line("Mesh images uniform pool destroyed");
 	}
 	if (cameraDescriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, cameraDescriptorPool, nullptr);
 		cameraDescriptorPool = VK_NULL_HANDLE;
-		print("[INFO] Camera uniform pool destroyed");
+		print_line("Camera uniform pool destroyed");
 	}
 
 	if (meshesDescriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, meshesDescriptorPool, nullptr);
 		meshesDescriptorPool = VK_NULL_HANDLE;
-		print("[INFO] Meshes uniform pool destroyed");
+		print_line("Meshes uniform pool destroyed");
 	}
 }
 
@@ -1671,12 +1676,12 @@ bool VulkanServer::allocateConfigureCameraDescriptorSet() {
 	allocationInfo.descriptorSetCount = 1;
 	allocationInfo.pSetLayouts = &cameraDescriptorSetLayout;
 
-	VkResult res =
-			vkAllocateDescriptorSets(device, &allocationInfo, &cameraDescriptorSet);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Allocation of descriptor set failed");
-		return false;
-	}
+	VkResult res = vkAllocateDescriptorSets(
+			device,
+			&allocationInfo,
+			&cameraDescriptorSet);
+
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
 	// Update descriptor allocated with buffer
 	VkDescriptorBufferInfo cameraBufferInfo = {};
@@ -1695,7 +1700,7 @@ bool VulkanServer::allocateConfigureCameraDescriptorSet() {
 
 	vkUpdateDescriptorSets(device, 1, &cameraWriteDescriptor, 0, nullptr);
 
-	print("[INFO] camera descriptor set created");
+	print_line("camera descriptor set created");
 	return true;
 }
 
@@ -1708,11 +1713,12 @@ bool VulkanServer::allocateConfigureMeshesDescriptorSet() {
 	allocationInfo.descriptorSetCount = 1;
 	allocationInfo.pSetLayouts = &meshesDescriptorSetLayout;
 
-	VkResult res = vkAllocateDescriptorSets(device, &allocationInfo, &meshesDescriptorSet);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Allocation of descriptor set failed");
-		return false;
-	}
+	VkResult res = vkAllocateDescriptorSets(
+			device,
+			&allocationInfo,
+			&meshesDescriptorSet);
+
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
 	// Update the descriptor with dynamic buffer
 	VkDescriptorBufferInfo meshBufferInfo = {};
@@ -1731,7 +1737,7 @@ bool VulkanServer::allocateConfigureMeshesDescriptorSet() {
 
 	vkUpdateDescriptorSets(device, 1, &meshesWriteDescriptor, 0, nullptr);
 
-	print("[INFO] Descriptor set created");
+	print_line("Descriptor set created");
 	return true;
 }
 
@@ -1743,14 +1749,15 @@ bool VulkanServer::createCommandPool() {
 	commandPoolCreateInfo.queueFamilyIndex = queueIndices.graphicsFamilyIndex;
 	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-	VkResult res = vkCreateCommandPool(device, &commandPoolCreateInfo, nullptr,
+	VkResult res = vkCreateCommandPool(
+			device,
+			&commandPoolCreateInfo,
+			nullptr,
 			&graphicsCommandPool);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Command pool creation failed");
-		return false;
-	}
 
-	print("[INFO] Command pool craeted");
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
+
+	print_line("Command pool craeted");
 	return true;
 }
 
@@ -1760,7 +1767,7 @@ void VulkanServer::destroyCommandPool() {
 
 	vkDestroyCommandPool(device, graphicsCommandPool, nullptr);
 	graphicsCommandPool = VK_NULL_HANDLE;
-	print("[INFO] Command pool destroyed");
+	print_line("Command pool destroyed");
 
 	// Since the command buffers are destroyed by this function here I want clear
 	// it
@@ -1780,24 +1787,34 @@ bool VulkanServer::allocateCommandBuffers() {
 	allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocateInfo.commandBufferCount = (uint32_t)drawCommandBuffers.size();
 
-	if (VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, drawCommandBuffers.data())) {
-		print("[ERROR] Draw Command buffer allocation fail");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vkAllocateCommandBuffers(
+								  device,
+								  &allocateInfo,
+								  drawCommandBuffers.data()),
+			false);
 
 	allocateInfo.commandBufferCount = 1;
-	if (VK_SUCCESS != vkAllocateCommandBuffers(device, &allocateInfo, &copyCommandBuffer)) {
-		print("[ERROR] Copy command buffer allocation failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vkAllocateCommandBuffers(
+								  device,
+								  &allocateInfo,
+								  &copyCommandBuffer),
+			false);
 
-	print("[INFO] command buffers allocated");
+	print_line("command buffers allocated");
 	return true;
 }
 
 void VulkanServer::beginCommandBuffers() {
 
-	vkWaitForFences(device, drawFinishFences.size(), drawFinishFences.data(), VK_TRUE, LONGTIMEOUT_NANOSEC);
+	vkWaitForFences(
+			device,
+			drawFinishFences.size(),
+			drawFinishFences.data(),
+			VK_TRUE,
+			LONGTIMEOUT_NANOSEC);
+
 	for (int i = drawCommandBuffers.size() - 1; 0 <= i; --i) {
 
 		VkCommandBufferBeginInfo beginInfo = {};
@@ -1846,11 +1863,9 @@ void VulkanServer::beginCommandBuffers() {
 
 		vkCmdEndRenderPass(drawCommandBuffers[i]);
 
-		if (VK_SUCCESS != vkEndCommandBuffer(drawCommandBuffers[i])) {
-			print("[ERROR - not handled] end render pass failed");
-		}
+		ERR_FAIL_COND(VK_SUCCESS != vkEndCommandBuffer(drawCommandBuffers[i]));
 	}
-	print("[INFO] Command buffers initializated");
+	print_line("Command buffers initializated");
 }
 
 bool VulkanServer::createSyncObjects() {
@@ -1872,18 +1887,26 @@ bool VulkanServer::createSyncObjects() {
 	for (int i = swapchainImages.size() - 1; 0 <= i; --i) {
 		// Create semaphores
 
-		res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr,
+		res = vkCreateSemaphore(
+				device,
+				&semaphoreCreateInfo,
+				nullptr,
 				&renderFinishedSemaphores[i]);
+
 		if (res != VK_SUCCESS) {
-			print("[ERROR] Semaphore creation failed");
+			print_error("Semaphore creation failed");
 			success = false;
 			renderFinishedSemaphores[i] = VK_NULL_HANDLE;
 		}
 
-		res =
-				vkCreateFence(device, &fenceCreateInfo, nullptr, &drawFinishFences[i]);
+		res = vkCreateFence(
+				device,
+				&fenceCreateInfo,
+				nullptr,
+				&drawFinishFences[i]);
+
 		if (res != VK_SUCCESS) {
-			print("[ERROR] Draw fences creation failed");
+			print_error("Draw fences creation failed");
 			success = false;
 			drawFinishFences[i] = VK_NULL_HANDLE;
 		}
@@ -1893,21 +1916,23 @@ bool VulkanServer::createSyncObjects() {
 		return false;
 	}
 
-	res = vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr,
+	res = vkCreateSemaphore(
+			device,
+			&semaphoreCreateInfo,
+			nullptr,
 			&imageAvailableSemaphore);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Semaphore creation failed");
-		return false;
-	}
 
-	res = vkCreateFence(device, &fenceCreateInfo, nullptr, &copyFinishFence);
-	if (res != VK_SUCCESS) {
-		print("[ERROR] Copy fences creation failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print("[INFO] Semaphores and Fences created");
+	res = vkCreateFence(
+			device,
+			&fenceCreateInfo,
+			nullptr,
+			&copyFinishFence);
 
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
+
+	print_line("Semaphores and Fences created");
 	return true;
 }
 
@@ -1935,7 +1960,7 @@ void VulkanServer::destroySyncObjects() {
 		copyFinishFence = VK_NULL_HANDLE;
 	}
 
-	print("[INFO] Semaphores and Fences destroyed");
+	print_line("Semaphores and Fences destroyed");
 }
 
 void VulkanServer::reloadCamera() {
@@ -1949,12 +1974,14 @@ void VulkanServer::removeAllMeshes() {
 		removeMesh(meshes[m]);
 	}
 	meshes.clear();
-	print("[INFO] All meshes removed from scene");
+	print_line("All meshes removed from scene");
 }
 
-bool checkExtensionsSupport(const vector<const char *> &p_requiredExtensions,
-		vector<VkExtensionProperties> availableExtensions,
+bool checkExtensionsSupport(
+		const std::vector<const char *> &p_requiredExtensions,
+		std::vector<VkExtensionProperties> availableExtensions,
 		bool verbose = true) {
+
 	bool missing = false;
 	for (size_t i = 0; i < p_requiredExtensions.size(); ++i) {
 		bool found = false;
@@ -1967,8 +1994,10 @@ bool checkExtensionsSupport(const vector<const char *> &p_requiredExtensions,
 		}
 
 		if (verbose)
-			print(string("	extension: ") + string(p_requiredExtensions[i]) +
-					string(found ? " [Available]" : " [NOT AVAILABLE]"));
+			print_line(
+					std::string("\textension: ") +
+					std::string(p_requiredExtensions[i]) +
+					std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
 		if (found)
 			missing = true;
 	}
@@ -1976,30 +2005,41 @@ bool checkExtensionsSupport(const vector<const char *> &p_requiredExtensions,
 }
 
 bool VulkanServer::checkInstanceExtensionsSupport(
-		const vector<const char *> &p_requiredExtensions) {
+		const std::vector<const char *> &p_requiredExtensions) {
+
 	uint32_t availableExtensionsCount = 0;
-	vector<VkExtensionProperties> availableExtensions;
-	vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionsCount,
+	std::vector<VkExtensionProperties> availableExtensions;
+	vkEnumerateInstanceExtensionProperties(
+			nullptr,
+			&availableExtensionsCount,
 			nullptr);
+
 	availableExtensions.resize(availableExtensionsCount);
-	vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionsCount,
+	vkEnumerateInstanceExtensionProperties(
+			nullptr,
+			&availableExtensionsCount,
 			availableExtensions.data());
 
-	print("Checking if required extensions are available");
+	print_line("Checking if required extensions are available");
 	return checkExtensionsSupport(p_requiredExtensions, availableExtensions);
 }
 
 bool VulkanServer::checkValidationLayersSupport(
-		const vector<const char *> &p_layers) {
+		const std::vector<const char *> &p_layers) {
 
 	uint32_t availableLayersCount = 0;
-	vector<VkLayerProperties> availableLayers;
-	vkEnumerateInstanceLayerProperties(&availableLayersCount, nullptr);
+	std::vector<VkLayerProperties> availableLayers;
+	vkEnumerateInstanceLayerProperties(
+			&availableLayersCount,
+			nullptr);
+
 	availableLayers.resize(availableLayersCount);
-	vkEnumerateInstanceLayerProperties(&availableLayersCount,
+
+	vkEnumerateInstanceLayerProperties(
+			&availableLayersCount,
 			availableLayers.data());
 
-	print("Checking if required validation layers are available");
+	print_line("Checking if required validation layers are available");
 	bool missing = false;
 	for (int i = p_layers.size() - 1; i >= 0; --i) {
 		bool found = false;
@@ -2010,8 +2050,10 @@ bool VulkanServer::checkValidationLayersSupport(
 			}
 		}
 
-		print(string("	layer: ") + string(p_layers[i]) +
-				string(found ? " [Available]" : " [NOT AVAILABLE]"));
+		print_line(
+				std::string("	layer: ") +
+				std::string(p_layers[i]) +
+				std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
 		if (found)
 			missing = true;
 	}
@@ -2019,11 +2061,11 @@ bool VulkanServer::checkValidationLayersSupport(
 }
 
 int VulkanServer::autoSelectPhysicalDevice(
-		const vector<VkPhysicalDevice> &p_devices,
+		const std::vector<VkPhysicalDevice> &p_devices,
 		VkPhysicalDeviceType p_deviceType,
 		VkPhysicalDeviceProperties *r_deviceProps) {
 
-	print("[INFO] Select physical device");
+	print_line("Select physical device");
 
 	for (int i = p_devices.size() - 1; 0 <= i; --i) {
 
@@ -2037,9 +2079,12 @@ int VulkanServer::autoSelectPhysicalDevice(
 		vkEnumerateDeviceExtensionProperties(p_devices[i], nullptr,
 				&extensionsCount, nullptr);
 
-		vector<VkExtensionProperties> availableExtensions(extensionsCount);
+		std::vector<VkExtensionProperties> availableExtensions(extensionsCount);
 		vkEnumerateDeviceExtensionProperties(
-				p_devices[i], nullptr, &extensionsCount, availableExtensions.data());
+				p_devices[i],
+				nullptr,
+				&extensionsCount,
+				availableExtensions.data());
 
 		if (r_deviceProps->deviceType != p_deviceType)
 			continue;
@@ -2055,10 +2100,9 @@ int VulkanServer::autoSelectPhysicalDevice(
 
 		// Here we are sure that the extensions are available in that device, so now
 		// we can check swap chain
-		SwapChainSupportDetails swapChainDetails =
-				querySwapChainSupport(p_devices[i]);
-		if (swapChainDetails.formats.empty() ||
-				swapChainDetails.presentModes.empty())
+		SwapChainSupportDetails swapChainDetails = querySwapChainSupport(p_devices[i]);
+
+		if (swapChainDetails.formats.empty() || swapChainDetails.presentModes.empty())
 			continue;
 
 		return i;
@@ -2094,12 +2138,15 @@ bool VulkanServer::createBuffer(VmaAllocator p_allocator, VkDeviceSize p_size,
 
 	VmaAllocationInfo allocationInfo = {};
 
-	if (VK_SUCCESS != vmaCreateBuffer(p_allocator, &bufferCreateInfo,
-							  &allocationCreateInfo, &r_buffer,
-							  &r_allocation, &allocationInfo)) {
-		print("[ERROR] failed to allocate memory");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vmaCreateBuffer(
+								  p_allocator,
+								  &bufferCreateInfo,
+								  &allocationCreateInfo,
+								  &r_buffer,
+								  &r_allocation,
+								  &allocationInfo),
+			false);
 
 	return allocationInfo.size >= p_size;
 }
@@ -2130,10 +2177,12 @@ VkFormat VulkanServer::findBestDepthFormat() {
 	return VK_FORMAT_D32_SFLOAT;
 }
 
-bool VulkanServer::chooseBestSupportedFormat(const vector<VkFormat> &p_formats,
+bool VulkanServer::chooseBestSupportedFormat(
+		const std::vector<VkFormat> &p_formats,
 		VkImageTiling p_tiling,
 		VkFormatFeatureFlags p_features,
 		VkFormat *r_format) {
+
 	VkFormatProperties props;
 	for (int i = 0, s = p_formats.size(); i < s; ++i) {
 		vkGetPhysicalDeviceFormatProperties(physicalDevice, p_formats[i], &props);
@@ -2150,15 +2199,19 @@ bool VulkanServer::chooseBestSupportedFormat(const vector<VkFormat> &p_formats,
 			}
 		}
 	}
-	print("[ERROR - not handled] Not able to find supported format");
-	return false;
+
+	ERR_EXPLAIN("Not able to find supported format");
+	ERR_FAIL_V(false);
 }
 
-bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height,
+bool VulkanServer::createImage(
+		uint32_t p_width,
+		uint32_t p_height,
 		VkFormat p_format, VkImageTiling p_tiling,
 		VkImageUsageFlags p_usage,
 		VkMemoryPropertyFlags p_memoryFlags,
 		VkImage &r_image, VkDeviceMemory &r_memory) {
+
 	VkImageCreateInfo imageCreateInfo = {};
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -2174,10 +2227,9 @@ bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height,
 	imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	if (VK_SUCCESS !=
-			vkCreateImage(device, &imageCreateInfo, nullptr, &r_image)) {
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vkCreateImage(device, &imageCreateInfo, nullptr, &r_image),
+			false);
 
 	VkMemoryRequirements memoryRequirements;
 	vkGetImageMemoryRequirements(device, r_image, &memoryRequirements);
@@ -2188,10 +2240,13 @@ bool VulkanServer::createImage(uint32_t p_width, uint32_t p_height,
 	memoryAllocInfo.memoryTypeIndex =
 			chooseMemoryType(memoryRequirements.memoryTypeBits, p_memoryFlags);
 
-	if (VK_SUCCESS !=
-			vkAllocateMemory(device, &memoryAllocInfo, nullptr, &r_memory)) {
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vkAllocateMemory(
+								  device,
+								  &memoryAllocInfo,
+								  nullptr,
+								  &r_memory),
+			false);
 
 	vkBindImageMemory(device, r_image, r_memory, /*Offset*/ 0);
 	return true;
@@ -2206,7 +2261,9 @@ void VulkanServer::destroyImage(VkImage &p_image, VkDeviceMemory &p_memory) {
 	p_memory = VK_NULL_HANDLE;
 }
 
-bool VulkanServer::createImageView(VkImage p_image, VkFormat p_format,
+bool VulkanServer::createImageView(
+		VkImage p_image,
+		VkFormat p_format,
 		VkImageAspectFlags p_aspectFlags,
 		VkImageView &r_imageView) {
 
@@ -2225,10 +2282,13 @@ bool VulkanServer::createImageView(VkImage p_image, VkFormat p_format,
 	viewCreateInfo.subresourceRange.baseArrayLayer = 0;
 	viewCreateInfo.subresourceRange.layerCount = 1;
 
-	if (VK_SUCCESS !=
-			vkCreateImageView(device, &viewCreateInfo, nullptr, &r_imageView)) {
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vkCreateImageView(
+								  device,
+								  &viewCreateInfo,
+								  nullptr,
+								  &r_imageView),
+			false);
 
 	return true;
 }
@@ -2294,20 +2354,27 @@ bool VulkanServer::submitWaitCommand(VkCommandBuffer p_command) {
 	VkFenceCreateInfo fenceCreateInfo = {};
 	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 
-	if (VK_SUCCESS != vkCreateFence(device, &fenceCreateInfo, nullptr, &fence)) {
-		print("[ERROR] fence creation failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(
+			VK_SUCCESS != vkCreateFence(
+								  device,
+								  &fenceCreateInfo,
+								  nullptr,
+								  &fence),
+			false);
 
 	bool success = true;
 	if (submitCommand(p_command, fence)) {
-		if (VK_SUCCESS !=
-				vkWaitForFences(device, 1, &fence, VK_TRUE, LONGTIMEOUT_NANOSEC)) {
-			print("[ERROR] Fence wait error");
-			success = false;
-		}
+		ERR_FAIL_COND_V(
+				VK_SUCCESS != vkWaitForFences(
+									  device,
+									  1,
+									  &fence,
+									  VK_TRUE,
+									  LONGTIMEOUT_NANOSEC),
+				false);
 	} else {
-		print("[ERROR] submit command error");
+
+		print_error("submit command error");
 		success = false;
 	}
 
@@ -2382,15 +2449,12 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format,
 		dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 
 	} else {
-		print("[ERROR] layout transfer not supported ");
-		return false;
+		ERR_EXPLAIN("[ERROR] layout transfer not supported ");
+		ERR_FAIL_V(false);
 	}
 
 	VkCommandBuffer command;
-	if (!allocateCommand(command)) {
-		print("[ERROR] command allocation failed, Image transition layout failed");
-		return false;
-	}
+	ERR_FAIL_COND_V(!allocateCommand(command), false);
 
 	beginOneTimeCommand(command);
 
@@ -2400,11 +2464,11 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format,
 	bool success = true;
 	if (endCommand(command)) {
 		if (!submitWaitCommand(command)) {
-			print("[ERROR] command submit failed, Image transition layout failed");
+			print_error("command submit failed, Image transition layout failed");
 			success = false;
 		}
 	} else {
-		print("[ERROR] command ending failed, Image transition layout failed");
+		print_error("command ending failed, Image transition layout failed");
 		success = false;
 	}
 	freeCommand(command);

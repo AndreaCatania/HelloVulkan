@@ -12,14 +12,6 @@
 #define TEXTURE_TEST 0
 #define LOAD_TEST 0
 
-void print(string c) {
-	cout << c << endl;
-}
-
-void print(const char *c) {
-	cout << c << endl;
-}
-
 class Ticker {
 
 public:
@@ -77,7 +69,7 @@ Texture *texture;
 
 #if CLOUDY_CUBES_TEST
 float cameraBoomLenght = 20;
-vector<Mesh *> meshes;
+std::vector<Mesh *> meshes;
 Texture *texture;
 #endif
 

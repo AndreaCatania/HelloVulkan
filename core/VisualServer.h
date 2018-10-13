@@ -150,8 +150,8 @@ public:
 
 	struct SwapChainSupportDetails {
 		VkSurfaceCapabilitiesKHR capabilities;
-		vector<VkSurfaceFormatKHR> formats;
-		vector<VkPresentModeKHR> presentModes;
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR> presentModes;
 	};
 
 	VulkanServer(VisualServer *p_visualServer);
@@ -193,15 +193,15 @@ private:
 	VkQueue presentationQueue;
 	VkSwapchainKHR swapchain;
 
-	vector<const char *> layers;
-	vector<const char *> deviceExtensions;
+	std::vector<const char *> layers;
+	std::vector<const char *> deviceExtensions;
 
-	vector<VkImage> swapchainImages;
+	std::vector<VkImage> swapchainImages;
 
 	VkFormat swapchainImageFormat;
 	VkExtent2D swapchainExtent;
 
-	vector<VkImageView> swapchainImageViews;
+	std::vector<VkImageView> swapchainImageViews;
 
 	VkImage depthImage;
 	VkDeviceMemory depthImageMemory;
@@ -229,7 +229,7 @@ private:
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
-	vector<VkFramebuffer> swapchainFramebuffers;
+	std::vector<VkFramebuffer> swapchainFramebuffers;
 
 	VmaAllocator bufferMemoryDeviceAllocator;
 
@@ -257,12 +257,12 @@ private:
 
 	VkCommandPool graphicsCommandPool;
 
-	vector<VkCommandBuffer> drawCommandBuffers; // Used to draw things
-	vector<VkFence> drawFinishFences;
+	std::vector<VkCommandBuffer> drawCommandBuffers; // Used to draw things
+	std::vector<VkFence> drawFinishFences;
 	VkCommandBuffer copyCommandBuffer; // Used to copy data to GPU
 
 	VkSemaphore imageAvailableSemaphore;
-	vector<VkSemaphore> renderFinishedSemaphores;
+	std::vector<VkSemaphore> renderFinishedSemaphores;
 
 	VkFence copyFinishFence;
 
@@ -271,9 +271,9 @@ private:
 
 	Camera camera;
 
-	vector<MeshHandle *> meshes;
-	vector<MeshHandle *> meshesCopyInProgress;
-	vector<MeshHandle *> meshesCopyPending;
+	std::vector<MeshHandle *> meshes;
+	std::vector<MeshHandle *> meshesCopyInProgress;
+	std::vector<MeshHandle *> meshesCopyPending;
 
 private:
 	bool createInstance();
@@ -297,8 +297,8 @@ private:
 
 	// Helper functions to create the swap chain
 	VkSurfaceFormatKHR
-	chooseSurfaceFormat(const vector<VkSurfaceFormatKHR> &p_formats);
-	VkPresentModeKHR choosePresentMode(const vector<VkPresentModeKHR> &p_modes);
+	chooseSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &p_formats);
+	VkPresentModeKHR choosePresentMode(const std::vector<VkPresentModeKHR> &p_modes);
 	VkExtent2D chooseExtent(const VkSurfaceCapabilitiesKHR &capabilities);
 
 	// This method is used to create the usable swap chain object
@@ -388,11 +388,11 @@ private:
 
 	void removeAllMeshes();
 
-	bool checkInstanceExtensionsSupport(const vector<const char *> &p_required_extensions);
-	bool checkValidationLayersSupport(const vector<const char *> &p_layers);
+	bool checkInstanceExtensionsSupport(const std::vector<const char *> &p_required_extensions);
+	bool checkValidationLayersSupport(const std::vector<const char *> &p_layers);
 
 	// Return the ID in the array of selected device
-	int autoSelectPhysicalDevice(const vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device, VkPhysicalDeviceProperties *r_deviceProps);
+	int autoSelectPhysicalDevice(const std::vector<VkPhysicalDevice> &p_devices, VkPhysicalDeviceType p_device, VkPhysicalDeviceProperties *r_deviceProps);
 
 private:
 	// Helpers
@@ -407,7 +407,7 @@ private:
 
 	// Accept the list of format in an ordered list from the best to worst
 	// and return one of it if it's supported by the Hardware
-	bool chooseBestSupportedFormat(const vector<VkFormat> &p_formats, VkImageTiling p_tiling, VkFormatFeatureFlags p_features, VkFormat *r_format);
+	bool chooseBestSupportedFormat(const std::vector<VkFormat> &p_formats, VkImageTiling p_tiling, VkFormatFeatureFlags p_features, VkFormat *r_format);
 
 	bool createImage(uint32_t p_width, uint32_t p_height, VkFormat p_format, VkImageTiling p_tiling, VkImageUsageFlags p_usage, VkMemoryPropertyFlags p_memoryFlags, VkImage &r_image, VkDeviceMemory &r_memory);
 	void destroyImage(VkImage &p_image, VkDeviceMemory &p_memory);

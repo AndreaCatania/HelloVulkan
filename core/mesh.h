@@ -10,10 +10,9 @@ class Mesh;
 class Texture;
 
 // This struct is used to know handle the memory of mesh
-class MeshHandle{
+class MeshHandle {
 public:
-
-	VulkanServer* vulkanServer;
+	VulkanServer *vulkanServer;
 	Mesh *mesh;
 
 	size_t verticesSize;
@@ -40,11 +39,11 @@ public:
 	void updateImages();
 };
 
-struct Vertex{
+struct Vertex {
 	glm::vec3 pos;
 	glm::vec2 textCoord; // UV
 
-	static VkVertexInputBindingDescription getBindingDescription(){
+	static VkVertexInputBindingDescription getBindingDescription() {
 		VkVertexInputBindingDescription desc = {};
 		desc.binding = 0;
 		desc.stride = sizeof(Vertex);
@@ -52,8 +51,8 @@ struct Vertex{
 		return desc;
 	}
 
-	static array<VkVertexInputAttributeDescription, 2> getAttributesDescription(){
-		array<VkVertexInputAttributeDescription, 2> attr;
+	static std::array<VkVertexInputAttributeDescription, 2> getAttributesDescription() {
+		std::array<VkVertexInputAttributeDescription, 2> attr;
 		attr[0].binding = 0;
 		attr[0].location = 0;
 		attr[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -68,22 +67,22 @@ struct Vertex{
 	}
 };
 
-struct Triangle{
+struct Triangle {
 	uint32_t indices[3];
 };
 
-class Mesh{
+class Mesh {
 	friend class VulkanServer;
 	friend class MeshHandle;
 
-	MeshHandle* meshHandle;
+	MeshHandle *meshHandle;
 
-	Texture* colorTexture;
+	Texture *colorTexture;
 	glm::mat4 transformation;
 
 public:
-	vector<Vertex> vertices;
-	vector<Triangle> triangles;
+	std::vector<Vertex> vertices;
+	std::vector<Triangle> triangles;
 
 public:
 	Mesh();
@@ -99,22 +98,22 @@ public:
 		return sizeof(Triangle) * triangles.size();
 	}
 
-	const uint32_t getCountIndices() const{
+	const uint32_t getCountIndices() const {
 		return triangles.size() * 3;
 	}
 
-	void setColorTexture(Texture* p_colorTexture);
-	const Texture* getColorTexture() const { return colorTexture; }
+	void setColorTexture(Texture *p_colorTexture);
+	const Texture *getColorTexture() const { return colorTexture; }
 
 	void setTransform(const glm::mat4 &p_transformation);
-	const glm::mat4& getTransform() const {
+	const glm::mat4 &getTransform() const {
 		return transformation;
 	}
 
 	int addUniqueTriangle(int p_lastIndex, const Vertex p_vertices[3]);
 
 	// Load new vertices from OBJ file
-	bool loadObj(const string &p_path);
+	bool loadObj(const std::string &p_path);
 };
 
 #endif // MESH_H

@@ -4,6 +4,8 @@
 #include "libs/stb/stb_image.h"
 
 #include "VisualServer.h"
+#include "core/error_macros.h"
+#include "core/print_string.h"
 
 Texture::Texture(VisualServer *p_visualServer) :
 		Texture(p_visualServer->getVulkanServer()) {}
@@ -21,7 +23,7 @@ Texture::~Texture() {
 	clear();
 }
 
-bool Texture::load(const string &p_path) {
+bool Texture::load(const std::string &p_path) {
 
 	clear();
 
@@ -34,16 +36,13 @@ bool Texture::load(const string &p_path) {
 		int real_channels_of_image;
 		unsigned char *imageData = stbi_load(p_path.c_str(), &width, &height, &real_channels_of_image, channels_of_image);
 
-		if (nullptr == imageData) {
-			print("[ERROR] Image file can't be loaded, may be corrupted or extension not supported: " + p_path);
-			return false;
-		}
+		ERR_FAIL_COND_V(!imageData, false);
 
 		VkDeviceSize size = width * height * channels_of_image;
 
 		// Load inside buffer
 		if (!vulkanServer->createImageLoadBuffer(size, imageBuffer, allocation, allocator)) {
-			print("[ERROR] Failed to create load buffer during image loading");
+			print_error("Failed to create load buffer during image loading");
 			stbi_image_free(imageData);
 			return false;
 		}

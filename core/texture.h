@@ -7,11 +7,11 @@ class VisualServer;
 class VulkanServer;
 class Mesh;
 
-class Texture{
+class Texture {
 	friend class Mesh;
 	friend class MeshHandle;
 
-	VulkanServer* vulkanServer;
+	VulkanServer *vulkanServer;
 	VkImage image;
 	VkDeviceMemory imageMemory;
 	VkImageView imageView;
@@ -22,10 +22,10 @@ class Texture{
 	int channels_of_image;
 
 public:
-	Texture(VulkanServer* p_vulkanServer);
-	Texture(VisualServer* p_visualServer);
+	Texture(VulkanServer *p_vulkanServer);
+	Texture(VisualServer *p_visualServer);
 	~Texture();
-	bool load(const string &p_path);
+	bool load(const std::string &p_path);
 
 private:
 	bool _createSampler();
