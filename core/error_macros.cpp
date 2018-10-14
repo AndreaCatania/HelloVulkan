@@ -31,6 +31,7 @@
 #include "error_macros.h"
 
 bool _err_error_exists = false;
+std::string _last_error("");
 
 static ErrorHandlerList *error_handler_list = NULL;
 

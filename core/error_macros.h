@@ -61,7 +61,15 @@ enum ErrorHandlerType {
 	ERR_HANDLER_SHADER,
 };
 
-typedef void (*ErrorHandlerFunc)(void *, const char *, const char *, int p_line, const char *, const char *, ErrorHandlerType p_type);
+typedef void (*ErrorHandlerFunc)(
+		void *,
+		const char *,
+		const char *,
+		int p_line,
+		const char *,
+		const char *,
+		ErrorHandlerType p_type);
+
 void _err_set_last_error(const char *p_err);
 void _err_clear_last_error();
 
@@ -95,7 +103,7 @@ void _err_print_index_error(const char *p_function, const char *p_file, int p_li
 /** An index has failed if m_index<0 or m_index >=m_size, the function exists */
 
 extern bool _err_error_exists;
-std::string _last_error;
+extern std::string _last_error;
 
 #ifdef DEBUG_ENABLED
 /** Print a warning string.

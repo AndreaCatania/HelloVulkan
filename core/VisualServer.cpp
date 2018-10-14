@@ -55,8 +55,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 		const char *msg,
 		void *userData) {
 
-	print_line(std::string("[VL ] ") + std::string(msg));
-
+	print_error(std::string("[Vulkan VL] ") + msg);
 	return VK_FALSE;
 }
 
@@ -547,6 +546,7 @@ void VulkanServer::destroyDebugCallback() {
 bool VulkanServer::createSurface() {
 
 	ERR_FAIL_COND_V(!window->createSurface(instance, &surface), false);
+	return true;
 }
 
 void VulkanServer::destroySurface() {
