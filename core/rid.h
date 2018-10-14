@@ -34,6 +34,7 @@ class RID_owner : public RID_owner_base {
 
 	std::set<ResourceData *> resources;
 
+public:
 	RID make_rid(T *r_resource);
 	void release(RID &p_rid);
 

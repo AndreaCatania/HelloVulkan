@@ -246,7 +246,7 @@ void Main::start() {
 
 	WindowServer *window_server = new GLFWWindowServer;
 
-	if (window_server->init()) {
+	if (window_server->init_server()) {
 
 		vm = new VisualServer(window_server);
 		if (vm->init()) {
@@ -265,7 +265,7 @@ void Main::start() {
 		delete vm;
 		vm = NULL;
 
-		window_server->terminate();
+		window_server->terminate_server();
 	}
 
 	delete window_server;

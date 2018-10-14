@@ -2,21 +2,21 @@
 
 #include "servers/window_server.h"
 
-class GLFWwindow;
+class GLFWWindowData;
 
 class GLFWWindowServer : public WindowServer {
 private:
-	GLFWwindow *window;
+	RID_owner<GLFWWindowData> windows_owner;
 
 public:
 	bool running;
 
 public:
 	GLFWWindowServer();
-	virtual bool init();
-	virtual void terminate();
-	virtual bool instanceWindow(const char *p_title, int p_width, int p_height);
-	virtual void freeWindow();
+	virtual bool init_server();
+	virtual void terminate_server();
+	virtual RID create_window(const char *p_title, int p_width, int p_height);
+	virtual void free_window();
 	virtual bool isDrawable() const;
 	virtual void set_drawable(bool p_state);
 	virtual void getWindowSize(int *r_width, int *r_height);

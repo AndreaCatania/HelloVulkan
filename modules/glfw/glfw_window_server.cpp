@@ -1,25 +1,25 @@
 #include "glfw_window_server.h"
 
 #include "core/error_macros.h"
+#include "modules/glfw/glfw_window.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include "thirdparty/glfw/include/GLFW/glfw3.h"
 
 GLFWWindowServer::GLFWWindowServer() :
-		window(nullptr),
 		running(true) {}
 
-bool GLFWWindowServer::init() {
+bool GLFWWindowServer::init_server() {
 	glfwInit();
 }
 
-void GLFWWindowServer::terminate() {
+void GLFWWindowServer::terminate_server() {
 	glfwTerminate();
 }
 
-bool GLFWWindowServer::instanceWindow(const char *p_title, int p_width, int p_height) {
+RID GLFWWindowServer::create_window(const char *p_title, int p_width, int p_height) {
 
-	ERR_FAIL_COND_V(window, false);
+	GLFWwindow *window;
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -30,12 +30,16 @@ bool GLFWWindowServer::instanceWindow(const char *p_title, int p_width, int p_he
 		const char *errorMessage;
 		glfwGetError(&errorMessage);
 		ERR_EXPLAIN(errorMessage);
-		ERR_FAIL_V(false);
+		ERR_FAIL_V(RID());
 	}
-	return true;
+
+	GLFWWindowData *window_data = new GLFWWindowData;
+	window_data->set_window(window);
+
+	return windows_owner.make_rid(window_data);
 }
 
-void GLFWWindowServer::freeWindow() {
+void GLFWWindowServer::free_window() {
 	glfwDestroyWindow(window);
 	window = nullptr;
 }

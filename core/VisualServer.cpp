@@ -2526,9 +2526,9 @@ void VisualServer::removeMesh(Mesh *p_mesh) {
 }
 
 bool VisualServer::createWindow() {
-	return window_server->instanceWindow("Hello Vulkan", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT);
+	return window_server->create_window("Hello Vulkan", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT);
 }
 
 void VisualServer::freeWindow() {
-	window_server->freeWindow();
+	window_server->free_window();
 }
