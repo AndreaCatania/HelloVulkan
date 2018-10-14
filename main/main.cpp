@@ -245,28 +245,28 @@ void tick(float deltaTime) {
 void Main::start() {
 
 	WindowServer *window_server = new GLFWWindowServer;
+	window_server->init_server();
 
-	if (window_server->init_server()) {
+	RID test_window = WindowServer::get_singleton()->create_window("Hello Vulkan", 500, 500);
 
-		vm = new VisualServer(window_server);
-		if (vm->init()) {
+	vm = new VisualServer(test_window);
+	vm->init();
 
-			ticker.init();
-			ready();
-			while (vm->can_step()) {
-				ticker.step();
-				tick(ticker.getDeltaTime());
-				vm->step();
-			}
-
-			exit();
-			vm->terminate();
-		}
-		delete vm;
-		vm = NULL;
-
-		window_server->terminate_server();
+	ticker.init();
+	ready();
+	while (vm->can_step()) {
+		ticker.step();
+		tick(ticker.getDeltaTime());
+		vm->step();
 	}
+
+	exit();
+	vm->terminate();
+
+	delete vm;
+	vm = NULL;
+
+	window_server->terminate_server();
 
 	delete window_server;
 	window_server = NULL;

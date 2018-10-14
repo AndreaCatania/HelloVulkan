@@ -1,10 +1,10 @@
 #pragma once
 
+#include "core/rid.h"
 #include "hellovulkan.h"
 #include <chrono>
 
 class VisualServer;
-class WindowServer;
 class Mesh;
 struct MeshHandle;
 class Texture;
@@ -158,7 +158,7 @@ public:
 
 	bool enableValidationLayer();
 
-	bool create(WindowServer *p_window);
+	bool create(RID p_window);
 	void destroy();
 
 	void waitIdle();
@@ -180,7 +180,7 @@ public:
 	bool createImageViewTexture(VkImage p_image, VkImageView &r_imageView);
 
 private:
-	WindowServer *window;
+	RID window;
 	VisualServer *visualServer;
 
 	VkInstance instance;
@@ -430,11 +430,11 @@ class VisualServer {
 	friend class VulkanServer;
 
 	Texture *defaultTexture;
-	WindowServer *window_server;
+	RID window;
 	VulkanServer vulkanServer;
 
 public:
-	VisualServer(WindowServer *p_window);
+	VisualServer(RID p_window);
 	~VisualServer();
 
 	bool init();
@@ -448,8 +448,4 @@ public:
 
 	VulkanServer *getVulkanServer() { return &vulkanServer; }
 	const Texture *getDefaultTeture() const { return defaultTexture; }
-
-private:
-	bool createWindow();
-	void freeWindow();
 };

@@ -3,8 +3,8 @@
 
 GLFWWindowData::GLFWWindowData() :
 		ResourceData(),
-		window(nullptr) {}
+		glfw_window(nullptr) {}
 
-void GLFWWindowData::set_window(GLFWwindow *p_window) {
-	window = p_window;
+void GLFWWindowData::set_glfw_window(GLFWwindow *p_window) {
+	glfw_window = p_window;
 }

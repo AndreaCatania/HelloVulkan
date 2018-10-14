@@ -15,9 +15,6 @@
 #include "shaders/shader_shader_frag.gen.h"
 #include "shaders/shader_shader_vert.gen.h"
 
-#define INITIAL_WINDOW_WIDTH 800
-#define INITIAL_WINDOW_HEIGHT 600
-
 // This cap is necessary because I've no memory management yet
 #define MAX_MESH_COUNT 50
 
@@ -122,7 +119,6 @@ void Camera::setNearFar(float p_near, float p_far) {
 
 VulkanServer::VulkanServer(VisualServer *p_visualServer) :
 		visualServer(p_visualServer),
-		window(nullptr),
 		instance(VK_NULL_HANDLE),
 		debugCallback(VK_NULL_HANDLE),
 		surface(VK_NULL_HANDLE),
@@ -163,7 +159,7 @@ bool VulkanServer::enableValidationLayer() {
 #endif
 }
 
-bool VulkanServer::create(WindowServer *p_window) {
+bool VulkanServer::create(RID p_window) {
 
 	window = p_window;
 
@@ -239,7 +235,7 @@ void VulkanServer::destroy() {
 	destroyDebugCallback();
 	destroySurface();
 	destroyInstance();
-	window = nullptr;
+	window = RID();
 }
 
 void VulkanServer::waitIdle() {
@@ -484,7 +480,7 @@ bool VulkanServer::createInstance() {
 		requiredExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 	}
 
-	window->appendRequiredExtensions(requiredExtensions);
+	WindowServer::get_singleton()->get_required_extensions(window, requiredExtensions);
 
 	if (!checkInstanceExtensionsSupport(requiredExtensions)) {
 		return false;
@@ -545,7 +541,12 @@ void VulkanServer::destroyDebugCallback() {
 
 bool VulkanServer::createSurface() {
 
-	ERR_FAIL_COND_V(!window->createSurface(instance, &surface), false);
+	ERR_FAIL_COND_V(WindowServer::get_singleton()->create_surface(
+							window,
+							instance,
+							&surface),
+			false);
+
 	return true;
 }
 
@@ -783,7 +784,7 @@ VkExtent2D VulkanServer::chooseExtent(const VkSurfaceCapabilitiesKHR &capabiliti
 	// In this case we can set any value
 	// So I set the size of WIDTH and HEIGHT used for initialize Window
 	int width, height;
-	window->getWindowSize(&width, &height);
+	WindowServer::get_singleton()->get_window_size(window, &width, &height);
 	VkExtent2D actualExtent = { (uint32_t)width, (uint32_t)height };
 
 	actualExtent.width = MAX(
@@ -2479,20 +2480,16 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format,
 	return success;
 }
 
-VisualServer::VisualServer(WindowServer *p_window) :
+VisualServer::VisualServer(RID p_window) :
 		defaultTexture(nullptr),
-		window_server(p_window),
+		window(p_window),
 		vulkanServer(this) {}
 
 VisualServer::~VisualServer() {}
 
 bool VisualServer::init() {
 
-	bool state = createWindow();
-	if (!state)
-		return false;
-
-	state = vulkanServer.create(window_server);
+	bool state = vulkanServer.create(window);
 	if (!state)
 		return false;
 
@@ -2505,15 +2502,14 @@ bool VisualServer::init() {
 void VisualServer::terminate() {
 	delete defaultTexture;
 	vulkanServer.destroy();
-	freeWindow();
 }
 
 bool VisualServer::can_step() {
-	return window_server->isDrawable();
+	return WindowServer::get_singleton()->is_drawable(window);
 }
 
 void VisualServer::step() {
-	window_server->fetchEvents();
+	WindowServer::get_singleton()->fetch_events();
 	vulkanServer.draw();
 }
 
@@ -2523,12 +2519,4 @@ void VisualServer::addMesh(Mesh *p_mesh) {
 
 void VisualServer::removeMesh(Mesh *p_mesh) {
 	vulkanServer.removeMesh(p_mesh);
-}
-
-bool VisualServer::createWindow() {
-	return window_server->create_window("Hello Vulkan", INITIAL_WINDOW_WIDTH, INITIAL_WINDOW_HEIGHT);
-}
-
-void VisualServer::freeWindow() {
-	window_server->free_window();
 }

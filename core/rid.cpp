@@ -31,7 +31,7 @@ template <class T>
 void RID_owner<T>::release(RID &r_rid) {
 	ERR_FAIL_COND(!is_owner(r_rid));
 
-	ResourceData *rd = p_rid.get_data();
+	ResourceData *rd = r_rid.get_data();
 
 	set_owner(rd, nullptr);
 
@@ -41,7 +41,7 @@ void RID_owner<T>::release(RID &r_rid) {
 }
 
 template <class T>
-bool RID_owner<T>::is_owner(RID &p_rid) {
+bool RID_owner<T>::is_owner(const RID &p_rid) const {
 
 #ifdef DEBUG_ENABLED
 	if (p_rid.get_data()) {
@@ -55,7 +55,7 @@ bool RID_owner<T>::is_owner(RID &p_rid) {
 }
 
 template <class T>
-T *RID_owner<T>::get(RID &p_rid) {
+T *RID_owner<T>::get(const RID &p_rid) const {
 
 #ifdef DEBUG_ENABLED
 	if (p_rid.get_data()) {

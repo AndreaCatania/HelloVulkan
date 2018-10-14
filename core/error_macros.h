@@ -119,10 +119,12 @@ extern std::string _last_error;
 		_err_error_exists = true;                           \
 	}
 
+#define DEBUG_ONLY(code) code
 #else
 
 #define ERR_EXPLAIN(m_text)
 #define ERR_EXPLAINC(m_text)
+#define DEBUG_ONLY(code)
 
 #endif
 

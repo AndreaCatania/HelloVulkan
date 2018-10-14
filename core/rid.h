@@ -20,9 +20,10 @@ class RID {
 	ResourceData *data;
 
 public:
-	RID();
+	RID() :
+			data(nullptr) {}
 
-	_FORCE_INLINE_ ResourceData *get_data() { return data; }
+	_FORCE_INLINE_ ResourceData *get_data() const { return data; }
 };
 
 class RID_owner_base {
@@ -38,8 +39,8 @@ public:
 	RID make_rid(T *r_resource);
 	void release(RID &p_rid);
 
-	bool is_owner(RID &p_rid);
-	T *get(RID &p_rid);
+	bool is_owner(const RID &p_rid) const;
+	T *get(const RID &p_rid) const;
 
 private:
 	bool set_data(RID &r_rid, ResourceData *p_data);
