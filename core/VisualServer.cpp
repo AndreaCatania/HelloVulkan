@@ -456,7 +456,7 @@ bool VulkanServer::createImageViewTexture(VkImage p_image, VkImageView &r_imageV
 
 bool VulkanServer::createInstance() {
 
-	print_line("Instancing Vulkan");
+	print_verbose("Instancing Vulkan");
 
 	// Create instance
 	VkApplicationInfo appInfo = {};
@@ -499,7 +499,7 @@ bool VulkanServer::createInstance() {
 	VkResult res = vkCreateInstance(&createInfo, nullptr, &instance);
 
 	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
-	print_line("Instancing Vulkan success");
+	print_verbose("Instancing Vulkan success");
 	return true;
 }
 
@@ -508,7 +508,7 @@ void VulkanServer::destroyInstance() {
 		return;
 	vkDestroyInstance(instance, nullptr);
 	instance = VK_NULL_HANDLE;
-	print_line("Vulkan instance destroyed");
+	print_verbose("Vulkan instance destroyed");
 }
 
 bool VulkanServer::createDebugCallback() {
@@ -527,7 +527,7 @@ bool VulkanServer::createDebugCallback() {
 	VkResult res = func(instance, &createInfo, nullptr, &debugCallback);
 	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
 
-	print_line("Debug callback loaded");
+	print_verbose("Debug callback loaded");
 	return true;
 }
 
@@ -540,7 +540,7 @@ void VulkanServer::destroyDebugCallback() {
 
 	func(instance, debugCallback, nullptr);
 	debugCallback = VK_NULL_HANDLE;
-	print_line("Debug callback destroyed");
+	print_verbose("Debug callback destroyed");
 }
 
 bool VulkanServer::createSurface() {
@@ -597,7 +597,7 @@ bool VulkanServer::pickPhysicalDevice() {
 	physicalDeviceMinUniformBufferOffsetAlignment =
 			deviceProps.limits.minUniformBufferOffsetAlignment;
 
-	print_line("Physical Device selected");
+	print_verbose("Physical Device selected");
 	return true;
 }
 
@@ -655,7 +655,7 @@ bool VulkanServer::createLogicalDevice() {
 			&device);
 
 	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
-	print_line("Local device created");
+	print_verbose("Local device created");
 	return true;
 }
 
@@ -664,7 +664,7 @@ void VulkanServer::destroyLogicalDevice() {
 		return;
 	vkDestroyDevice(device, nullptr);
 	device = VK_NULL_HANDLE;
-	print_line("Local device destroyed");
+	print_verbose("Local device destroyed");
 }
 
 void VulkanServer::lockupDeviceQueue() {
@@ -680,7 +680,7 @@ void VulkanServer::lockupDeviceQueue() {
 		presentationQueue = graphicsQueue;
 	}
 
-	print_line("Device queue lockup success");
+	print_verbose("Device queue lockup success");
 }
 
 VulkanServer::QueueFamilyIndices
@@ -897,7 +897,7 @@ bool VulkanServer::createRawSwapchain() {
 	swapchainImageFormat = format.format;
 	swapchainExtent = extent2D;
 
-	print_line("Created swap chain");
+	print_verbose("Created swap chain");
 	return true;
 }
 
@@ -906,7 +906,7 @@ void VulkanServer::destroyRawSwapchain() {
 		return;
 	vkDestroySwapchainKHR(device, swapchain, nullptr);
 	swapchain = VK_NULL_HANDLE;
-	print_line("swapchain destroyed");
+	print_verbose("swapchain destroyed");
 }
 
 void VulkanServer::lockupSwapchainImages() {
@@ -922,7 +922,7 @@ void VulkanServer::lockupSwapchainImages() {
 			&imagesCount,
 			swapchainImages.data());
 
-	print_line("Swapchain images lockup success");
+	print_verbose("Swapchain images lockup success");
 }
 
 bool VulkanServer::createSwapchainImageViews() {
@@ -941,7 +941,7 @@ bool VulkanServer::createSwapchainImageViews() {
 
 	ERR_FAIL_COND_V(error, false);
 
-	print_line("All image view created");
+	print_verbose("All image view created");
 	return true;
 }
 
@@ -954,7 +954,7 @@ void VulkanServer::destroySwapchainImageViews() {
 		destroyImageView(swapchainImageViews[i]);
 	}
 	swapchainImageViews.clear();
-	print_line("Destroyed image views");
+	print_verbose("Destroyed image views");
 }
 
 bool VulkanServer::createDepthTestResources() {
@@ -990,7 +990,7 @@ bool VulkanServer::createDepthTestResources() {
 
 	ERR_FAIL_COND_V(!s, false);
 
-	print_line("Depth test resources created");
+	print_verbose("Depth test resources created");
 	return true;
 }
 
@@ -998,7 +998,7 @@ void VulkanServer::destroyDepthTestResources() {
 
 	destroyImageView(depthImageView);
 	destroyImage(depthImage, depthImageMemory);
-	print_line("Depth test resources destroyed");
+	print_verbose("Depth test resources destroyed");
 }
 
 bool VulkanServer::createRenderPass() {
@@ -1070,7 +1070,7 @@ bool VulkanServer::createRenderPass() {
 	VkResult res = vkCreateRenderPass(device, &renderPassCreateInfo, nullptr, &renderPass);
 	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print_line("Render pass created");
+	print_verbose("Render pass created");
 	return true;
 }
 
@@ -1151,7 +1151,7 @@ bool VulkanServer::createDescriptorSetLayouts() {
 		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
-	print_line("Uniform descriptors layouts created");
+	print_verbose("Uniform descriptors layouts created");
 	return true;
 }
 
@@ -1164,19 +1164,19 @@ void VulkanServer::destroyDescriptorSetLayouts() {
 				nullptr);
 
 		meshImagesDescriptorSetLayout = VK_NULL_HANDLE;
-		print_line("Image descriptor layout destroyed");
+		print_verbose("Image descriptor layout destroyed");
 	}
 
 	if (VK_NULL_HANDLE != meshesDescriptorSetLayout) {
 		vkDestroyDescriptorSetLayout(device, meshesDescriptorSetLayout, nullptr);
 		meshesDescriptorSetLayout = VK_NULL_HANDLE;
-		print_line("Meshe uniform descriptor destroyed");
+		print_verbose("Meshe uniform descriptor destroyed");
 	}
 
 	if (VK_NULL_HANDLE != cameraDescriptorSetLayout) {
 		vkDestroyDescriptorSetLayout(device, cameraDescriptorSetLayout, nullptr);
 		cameraDescriptorSetLayout = VK_NULL_HANDLE;
-		print_line("camera uniform descriptor destroyed");
+		print_verbose("camera uniform descriptor destroyed");
 	}
 }
 
@@ -1363,7 +1363,7 @@ bool VulkanServer::createGraphicsPipelines() {
 
 	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print_line("Pipeline created");
+	print_verbose("Pipeline created");
 	return true;
 }
 
@@ -1372,13 +1372,13 @@ void VulkanServer::destroyGraphicsPipelines() {
 	if (graphicsPipeline != VK_NULL_HANDLE) {
 		vkDestroyPipeline(device, graphicsPipeline, nullptr);
 		graphicsPipeline = VK_NULL_HANDLE;
-		print_line("pipeline destroyed");
+		print_verbose("pipeline destroyed");
 	}
 
 	if (pipelineLayout != VK_NULL_HANDLE) {
 		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 		pipelineLayout = VK_NULL_HANDLE;
-		print_line("pipeline layout destroyed");
+		print_verbose("pipeline layout destroyed");
 	}
 
 	destroyShaderModule(vertShaderModule);
@@ -1386,7 +1386,7 @@ void VulkanServer::destroyGraphicsPipelines() {
 	vertShaderModule = VK_NULL_HANDLE;
 	fragShaderModule = VK_NULL_HANDLE;
 
-	print_line("shader modules destroyed");
+	print_verbose("shader modules destroyed");
 }
 
 VkShaderModule VulkanServer::createShaderModule(size_t p_size, const char *shaderBytecode) {
@@ -1403,7 +1403,7 @@ VkShaderModule VulkanServer::createShaderModule(size_t p_size, const char *shade
 
 	VkShaderModule shaderModule;
 	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) == VK_SUCCESS) {
-		print_line("Shader module created");
+		print_verbose("Shader module created");
 		return shaderModule;
 	} else {
 		return VK_NULL_HANDLE;
@@ -1416,7 +1416,7 @@ void VulkanServer::destroyShaderModule(VkShaderModule &shaderModule) {
 
 	vkDestroyShaderModule(device, shaderModule, nullptr);
 	shaderModule = VK_NULL_HANDLE;
-	print_line("Shader module destroyed");
+	print_verbose("Shader module destroyed");
 }
 
 bool VulkanServer::createFramebuffers() {
@@ -1449,7 +1449,7 @@ bool VulkanServer::createFramebuffers() {
 		}
 	}
 
-	print_line("Framebuffers created");
+	print_verbose("Framebuffers created");
 	return true;
 }
 
@@ -1566,17 +1566,21 @@ bool VulkanServer::createUniformBuffers() {
 	meshUniformBufferData.size = MAX_MESH_COUNT;
 	meshUniformBufferData.count = 0;
 
-	print_line("uniform buffers allocation success");
+	print_verbose("uniform buffers allocation success");
 	return true;
 }
 
 void VulkanServer::destroyUniformBuffers() {
-	destroyBuffer(bufferMemoryHostAllocator,
+	destroyBuffer(
+			bufferMemoryHostAllocator,
 			meshUniformBufferData.meshUniformBuffer,
 			meshUniformBufferData.meshUniformBufferAllocation);
-	destroyBuffer(bufferMemoryHostAllocator, sceneUniformBuffer,
+
+	destroyBuffer(
+			bufferMemoryHostAllocator, sceneUniformBuffer,
 			sceneUniformBufferAllocation);
-	print_line("All buffers was freed");
+
+	print_verbose("All buffers was freed");
 }
 
 bool VulkanServer::createUniformPools() {
@@ -1644,7 +1648,7 @@ bool VulkanServer::createUniformPools() {
 		ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 	}
 
-	print_line("Uniform pools created");
+	print_verbose("Uniform pools created");
 	return true;
 }
 
@@ -1652,18 +1656,18 @@ void VulkanServer::destroyUniformPools() {
 	if (meshImagesDescriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, meshImagesDescriptorPool, nullptr);
 		meshImagesDescriptorPool = VK_NULL_HANDLE;
-		print_line("Mesh images uniform pool destroyed");
+		print_verbose("Mesh images uniform pool destroyed");
 	}
 	if (cameraDescriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, cameraDescriptorPool, nullptr);
 		cameraDescriptorPool = VK_NULL_HANDLE;
-		print_line("Camera uniform pool destroyed");
+		print_verbose("Camera uniform pool destroyed");
 	}
 
 	if (meshesDescriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, meshesDescriptorPool, nullptr);
 		meshesDescriptorPool = VK_NULL_HANDLE;
-		print_line("Meshes uniform pool destroyed");
+		print_verbose("Meshes uniform pool destroyed");
 	}
 }
 
@@ -1700,7 +1704,7 @@ bool VulkanServer::allocateConfigureCameraDescriptorSet() {
 
 	vkUpdateDescriptorSets(device, 1, &cameraWriteDescriptor, 0, nullptr);
 
-	print_line("camera descriptor set created");
+	print_verbose("camera descriptor set created");
 	return true;
 }
 
@@ -1737,7 +1741,7 @@ bool VulkanServer::allocateConfigureMeshesDescriptorSet() {
 
 	vkUpdateDescriptorSets(device, 1, &meshesWriteDescriptor, 0, nullptr);
 
-	print_line("Descriptor set created");
+	print_verbose("Descriptor set created");
 	return true;
 }
 
@@ -1757,7 +1761,7 @@ bool VulkanServer::createCommandPool() {
 
 	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print_line("Command pool craeted");
+	print_verbose("Command pool craeted");
 	return true;
 }
 
@@ -1767,7 +1771,7 @@ void VulkanServer::destroyCommandPool() {
 
 	vkDestroyCommandPool(device, graphicsCommandPool, nullptr);
 	graphicsCommandPool = VK_NULL_HANDLE;
-	print_line("Command pool destroyed");
+	print_verbose("Command pool destroyed");
 
 	// Since the command buffers are destroyed by this function here I want clear
 	// it
@@ -1802,7 +1806,7 @@ bool VulkanServer::allocateCommandBuffers() {
 								  &copyCommandBuffer),
 			false);
 
-	print_line("command buffers allocated");
+	print_verbose("command buffers allocated");
 	return true;
 }
 
@@ -1865,7 +1869,7 @@ void VulkanServer::beginCommandBuffers() {
 
 		ERR_FAIL_COND(VK_SUCCESS != vkEndCommandBuffer(drawCommandBuffers[i]));
 	}
-	print_line("Command buffers initializated");
+	print_verbose("Command buffers initializated");
 }
 
 bool VulkanServer::createSyncObjects() {
@@ -1932,7 +1936,7 @@ bool VulkanServer::createSyncObjects() {
 
 	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print_line("Semaphores and Fences created");
+	print_verbose("Semaphores and Fences created");
 	return true;
 }
 
@@ -1960,7 +1964,7 @@ void VulkanServer::destroySyncObjects() {
 		copyFinishFence = VK_NULL_HANDLE;
 	}
 
-	print_line("Semaphores and Fences destroyed");
+	print_verbose("Semaphores and Fences destroyed");
 }
 
 void VulkanServer::reloadCamera() {
@@ -1974,7 +1978,7 @@ void VulkanServer::removeAllMeshes() {
 		removeMesh(meshes[m]);
 	}
 	meshes.clear();
-	print_line("All meshes removed from scene");
+	print_verbose("All meshes removed from scene");
 }
 
 bool checkExtensionsSupport(
@@ -1994,7 +1998,7 @@ bool checkExtensionsSupport(
 		}
 
 		if (verbose)
-			print_line(
+			print_verbose(
 					std::string("\textension: ") +
 					std::string(p_requiredExtensions[i]) +
 					std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
@@ -2020,7 +2024,7 @@ bool VulkanServer::checkInstanceExtensionsSupport(
 			&availableExtensionsCount,
 			availableExtensions.data());
 
-	print_line("Checking if required extensions are available");
+	print_verbose("Checking if required extensions are available");
 	return checkExtensionsSupport(p_requiredExtensions, availableExtensions);
 }
 
@@ -2039,7 +2043,7 @@ bool VulkanServer::checkValidationLayersSupport(
 			&availableLayersCount,
 			availableLayers.data());
 
-	print_line("Checking if required validation layers are available");
+	print_verbose("Checking if required validation layers are available");
 	bool missing = false;
 	for (int i = p_layers.size() - 1; i >= 0; --i) {
 		bool found = false;
@@ -2050,7 +2054,7 @@ bool VulkanServer::checkValidationLayersSupport(
 			}
 		}
 
-		print_line(
+		print_verbose(
 				std::string("	layer: ") +
 				std::string(p_layers[i]) +
 				std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
@@ -2065,7 +2069,7 @@ int VulkanServer::autoSelectPhysicalDevice(
 		VkPhysicalDeviceType p_deviceType,
 		VkPhysicalDeviceProperties *r_deviceProps) {
 
-	print_line("Select physical device");
+	print_verbose("Select physical device");
 
 	for (int i = p_devices.size() - 1; 0 <= i; --i) {
 

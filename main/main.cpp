@@ -2,7 +2,9 @@
 #include "main.h"
 
 #include "core/VisualServer.h"
+#include "core/error_macros.h"
 #include "core/mesh.h"
+#include "core/print_string.h"
 #include "core/texture.h"
 #include "libs/glm/gtc/random.hpp"
 #include "modules/glfw/glfw_window_server.h"
@@ -241,6 +243,7 @@ void tick(float deltaTime) {
 }
 
 void Main::start() {
+
 	WindowServer *window_server = new GLFWWindowServer;
 
 	if (window_server->init()) {

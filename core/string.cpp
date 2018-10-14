@@ -16,9 +16,8 @@ std::string itos(int64_t p_number, int base, bool capitalize_hex) {
 	if (sign)
 		chars++;
 	std::string s;
-	s.resize(chars + 1);
+	s.resize(chars);
 	char *c = &s[0];
-	c[chars] = 0;
 	n = p_number;
 	do {
 		int mod = ABS(n % base);

@@ -33,13 +33,15 @@ void print_error_callback(
 
 	std::string msg =
 			std::string() +
-			"File: " + p_file +
-			"\n\tFunction: " + p_function +
-			", line: " + itos(p_line) +
-			" Error Message: " + p_error +
-			p_explain;
+			(p_type == ERR_HANDLER_ERROR ? "[ERROR] " : "[WARN]") +
+			p_file +
+			" Function: " + p_function +
+			", line: " +
+			itos(p_line) +
+			"\n\t" + p_error +
+			" " + p_explain;
 
-	std::cerr << "[----] " << msg << std::endl;
+	std::cerr << msg << std::endl;
 }
 
 int main() {
