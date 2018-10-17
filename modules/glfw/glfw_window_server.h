@@ -1,7 +1,8 @@
 #pragma once
 
-#include "modules/glfw/glfw_window.h"
 #include "servers/window_server.h"
+
+#include "modules/glfw/glfw_window.h"
 
 class GLFWWindowServer : public WindowServer {
 private:
