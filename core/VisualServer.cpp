@@ -541,7 +541,7 @@ void VulkanServer::destroyDebugCallback() {
 
 bool VulkanServer::createSurface() {
 
-	ERR_FAIL_COND_V(WindowServer::get_singleton()->create_surface(
+	ERR_FAIL_COND_V(!WindowServer::get_singleton()->create_surface(
 							window,
 							instance,
 							&surface),

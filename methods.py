@@ -170,3 +170,33 @@ def add_program(env, name, sources, **args):
     program = env.Program(name, sources, **args)
     env.NoCache(program)
     return program
+
+
+def setup_lunarg(platform):
+    return download_lunarg(platform)
+
+
+import urllib2
+
+def download_lunarg(platform):
+    repository_url = ""
+    if platform=="x11":
+        repository_url = "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.gz?u="
+
+    if platform == "":
+        return False
+
+
+    print 'Start downloading of LunarG SDK, Wait please :)'
+
+    import urllib2
+
+    filedata = urllib2.urlopen(repository_url)
+    datatowrite = filedata.read()
+
+    with open("./lunarg_sdk-tar.gz", 'wb') as f:
+        f.write(datatowrite)
+
+    print 'Download of LunarG SDK is done, Thank you.'
+    return True
+

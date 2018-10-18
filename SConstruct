@@ -39,6 +39,10 @@ if vulkan_SDK_path == "":
 env = Environment()
 
 
+""" Setup lunarG """
+state = methods.setup_lunarg(platform)
+
+
 """ Create directories """
 Execute(Mkdir('bin'))
 
