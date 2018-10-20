@@ -2489,14 +2489,17 @@ VisualServer::~VisualServer() {}
 
 bool VisualServer::init() {
 
-	bool state = vulkanServer.create(window);
-	if (!state)
-		return false;
+	ERR_FAIL_COND_V(!vulkanServer.create(window), false);
+
+	WindowServer::get_singleton()->set_drawable(window, true);
 
 	defaultTexture = new Texture(&vulkanServer);
-	state = defaultTexture->load("/home/andrea/Workspace/git/HelloVulkan/assets/default.png");
+	ERR_FAIL_COND_V(
+			!defaultTexture->load(
+					"/home/andrea/Workspace/git/HelloVulkan/assets/default.png"),
+			false);
 
-	return state;
+	return true;
 }
 
 void VisualServer::terminate() {

@@ -2,6 +2,8 @@
 
 import methods
 import sys
+import os
+import os.path
 
 executable_name = 'hello_vulkan'
 executable_dir = '#bin'
@@ -38,7 +40,9 @@ Execute(Mkdir('bin'))
 
 
 """ Setup lunarG """
-lunarg_sdk_path = methods.setup_lunarg(platform)
+relative_sdk_path = methods.setup_lunarg(platform)
+rel_bin_sdk_path = relative_sdk_path.replace("./bin", "./")
+lunarg_sdk_path = os.path.abspath(relative_sdk_path)
 if lunarg_sdk_path =="":
     print "LunarG SDK setup failed"
     Exit(126)
@@ -77,6 +81,16 @@ if not verbose:
 if debug:
     env.Append(CPPDEFINES=['DEBUG_ENABLED'])
     env.Append(CCFLAGS=['-ggdb'])
+    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=' + rel_bin_sdk_path})
+
+# TODO remove RPATH and setup all shadered object inside bin
+# Because it doesn't work with Windows.
+# A possible solution would be put these libraries inside lib folder
+# But in this moment I think that is better to put all dependecy inside the
+# Executable dir Bin
+env.Append(RPATH = env.Literal(
+    os.path.join('\\$$ORIGIN', os.pardir, rel_bin_sdk_path)))
+
 
 Export('env')
 

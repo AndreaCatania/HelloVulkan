@@ -8,10 +8,6 @@ executable_name = env.executable_name
 # Define vulkan library
 vulkan_library_name = "vulkan"
 
-if env.debug:
-    env.Append(CPPDEFINES={'VULKAN_LD_LIBRARY' : 'LD_LIBRARY_PATH="' + env.lunarg_sdk_path + '"'})
-    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH="' + env.lunarg_sdk_path + '"'})
-
 env.Append(LIBPATH=[env.lunarg_sdk_path])
 env.Append(LIBS=[vulkan_library_name])
 # ~TODO put this inside a module please

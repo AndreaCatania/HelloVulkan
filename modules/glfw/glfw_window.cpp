@@ -3,6 +3,7 @@
 
 GLFWWindowData::GLFWWindowData() :
 		ResourceData(),
+		drawable(false),
 		glfw_window(nullptr) {}
 
 void GLFWWindowData::set_glfw_window(GLFWwindow *p_window) {

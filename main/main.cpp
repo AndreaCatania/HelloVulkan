@@ -250,7 +250,7 @@ void Main::start() {
 	RID test_window = WindowServer::get_singleton()->create_window("Hello Vulkan", 500, 500);
 
 	vm = new VisualServer(test_window);
-	vm->init();
+	CRASH_COND(!vm->init());
 
 	ticker.init();
 	ready();

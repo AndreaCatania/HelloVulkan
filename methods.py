@@ -188,7 +188,7 @@ def setup_lunarg(platform):
             " To re-install it remove this file: " + \
             sdk_setup_proof_path
 
-        return os.path.abspath(sdk_base_path)
+        return sdk_base_path
 
     if sdk_archive_path == "":
         return ""
@@ -237,7 +237,7 @@ def setup_lunarg(platform):
         f.write("success")
 
     print "LunarG SDK installation success"
-    return os.path.abspath(sdk_base_path)
+    return sdk_base_path
 
 
 def download_lunarg(platform):
@@ -255,7 +255,7 @@ def download_lunarg(platform):
     sdk_archive_path = base_path + "/" + file_name
 
     if os.path.exists(sdk_archive_path):
-        return os.path.abspath(sdk_archive_path)
+        return sdk_archive_path
 
     if not os.path.exists(base_path):
         os.makedirs(base_path)
@@ -269,5 +269,5 @@ def download_lunarg(platform):
         f.write(datatowrite)
 
     print 'Download of LunarG SDK is done.'
-    return os.path.abspath(sdk_archive_path)
+    return sdk_archive_path
 

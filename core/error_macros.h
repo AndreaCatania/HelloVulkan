@@ -120,6 +120,7 @@ extern std::string _last_error;
 	}
 
 #define DEBUG_ONLY(code) code
+
 #else
 
 #define ERR_EXPLAIN(m_text)
