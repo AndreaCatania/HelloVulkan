@@ -172,31 +172,100 @@ def add_program(env, name, sources, **args):
     return program
 
 
-def setup_lunarg(platform):
-    return download_lunarg(platform)
-
-
 import urllib2
+import tarfile
+
+def setup_lunarg(platform):
+
+    sdk_archive_path = download_lunarg(platform)
+    sdk_base_path = os.path.dirname(sdk_archive_path)
+    sdk_setup_proof_path = sdk_base_path + "/SETUP_SUCCESS"
+
+    if os.path.exists(sdk_setup_proof_path):
+        print "LunarG SDK Already installed." + \
+            " To re-install it remove this file: " + \
+            sdk_setup_proof_path
+
+        return sdk_base_path
+
+    if sdk_archive_path == "":
+        return ""
+
+    if sdk_archive_path.endswith('.tar.gz'):
+
+        base_source_path = "1.1.85.0/x86_64"
+
+        subdir = [
+            "bin",
+            "etc",
+            "lib",
+            "shared"
+        ]
+
+        archive = tarfile.open(
+            sdk_archive_path,
+            "r")
+
+        members = archive.getmembers()
+
+        for member in members:
+
+            if member.isdir():
+                continue
+
+            extract = False
+            for sd in subdir:
+                if member.name.startswith(base_source_path  + "/" + sd):
+                    extract = True
+
+            if not extract:
+                continue
+
+            file_name = os.path.basename(member.name)
+            member.name = file_name
+            archive.extract(
+                member,
+                sdk_base_path)
+
+    else:
+        print "Downloaded LunarG SDK extension not supported"
+        return ""
+
+    with open(sdk_setup_proof_path, "w") as f:
+        f.write("success")
+
+    print "LunarG SDK installation success"
+    return sdk_base_path
+
 
 def download_lunarg(platform):
     repository_url = ""
+    file_name = ""
+    base_path = "./bin/sdk"
+
     if platform=="x11":
         repository_url = "https://sdk.lunarg.com/sdk/download/latest/linux/vulkan-sdk.tar.gz?u="
+        file_name = "lunarg_sdk.tar.gz"
+        base_path += "/x11"
+    else:
+        return ""
 
-    if platform == "":
-        return False
+    sdk_archive_path = base_path + "/" + file_name
 
+    if os.path.exists(sdk_archive_path):
+        return sdk_archive_path
+
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
 
     print 'Start downloading of LunarG SDK, Wait please :)'
-
-    import urllib2
 
     filedata = urllib2.urlopen(repository_url)
     datatowrite = filedata.read()
 
-    with open("./lunarg_sdk-tar.gz", 'wb') as f:
+    with open(sdk_archive_path, 'wb') as f:
         f.write(datatowrite)
 
-    print 'Download of LunarG SDK is done, Thank you.'
-    return True
+    print 'Download of LunarG SDK is done.'
+    return sdk_archive_path
 

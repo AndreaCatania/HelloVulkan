@@ -39,13 +39,15 @@ if vulkan_SDK_path == "":
 env = Environment()
 
 
-""" Setup lunarG """
-state = methods.setup_lunarg(platform)
-
-
 """ Create directories """
 Execute(Mkdir('bin'))
 
+
+""" Setup lunarG """
+lunarg_sdk_path = methods.setup_lunarg(platform)
+if lunarg_sdk_path =="":
+    print "LunarG SDK setup failed"
+    Exit(126)
 
 """ Set shaders builders"""
 # TODO please make shader compiler part of project
