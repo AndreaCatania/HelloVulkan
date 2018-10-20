@@ -14,7 +14,6 @@ available_platforms = methods.detect_platoforms()
 """ Get Arguments """
 platform = ARGUMENTS.get('platform', 0)
 target = ARGUMENTS.get('target', "debug")
-vulkan_SDK_path = ARGUMENTS.get('vulkan_SDK_path', "")
 verbose = ARGUMENTS.get('verbose', False)
 
 
@@ -30,11 +29,6 @@ if platform not in available_platforms:
 
 debug = target == 'debug'
 
-# TODO improve compilation by removing this requirment
-if vulkan_SDK_path == "":
-    print "Please set vulkan_SDK_path. EG: C:\VulkanSDK\1.1.73.0"
-    Exit(9553) #Invalid property
-
 
 env = Environment()
 
@@ -49,15 +43,14 @@ if lunarg_sdk_path =="":
     print "LunarG SDK setup failed"
     Exit(126)
 
+
 """ Set shaders builders"""
-# TODO please make shader compiler part of project
 env.vulkan_glslangValidator_path = ""
 if platform == 'windows':
-    env.vulkan_glslangValidator_path = vulkan_SDK_path + r"\bin\glslangValidator"
+    env.vulkan_glslangValidator_path = lunarg_sdk_path + r"\glslangValidator"
 elif platform == 'x11':
-    env.vulkan_glslangValidator_path = vulkan_SDK_path + r"/bin/glslangValidator"
+    env.vulkan_glslangValidator_path = lunarg_sdk_path + r"/glslangValidator"
 
-""" ~Compile shaders """
 
 """ Project building """
 
@@ -65,7 +58,7 @@ env.executable_name = executable_name
 env.executable_dir = executable_dir
 env.platform = platform
 env.debug = debug
-env.vulkan_SDK_path = vulkan_SDK_path
+env.lunarg_sdk_path = lunarg_sdk_path
 
 env.__class__.add_source_files = methods.add_source_files
 env.__class__.add_library = methods.add_library
