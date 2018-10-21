@@ -159,15 +159,21 @@ bool VulkanServer::enableValidationLayer() {
 #endif
 }
 
-bool VulkanServer::create(RID p_window) {
-
-	window = p_window;
+bool VulkanServer::create() {
 
 	if (!createInstance())
 		return false;
 
 	if (!createDebugCallback())
 		return false;
+
+	window = WindowServer::get_singleton()->create_window(
+			instance,
+			"Hello Vulkan",
+			500,
+			500);
+
+	WindowServer::get_singleton()->set_drawable(window, true);
 
 	if (!createSurface())
 		return false;
@@ -480,7 +486,7 @@ bool VulkanServer::createInstance() {
 		requiredExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 	}
 
-	WindowServer::get_singleton()->get_required_extensions(window, requiredExtensions);
+	WindowServer::get_singleton()->get_required_extensions(requiredExtensions);
 
 	if (!checkInstanceExtensionsSupport(requiredExtensions)) {
 		return false;
@@ -488,8 +494,7 @@ bool VulkanServer::createInstance() {
 
 	createInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
 	createInfo.ppEnabledLayerNames = layers.data();
-	createInfo.enabledExtensionCount =
-			static_cast<uint32_t>(requiredExtensions.size());
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredExtensions.size());
 	createInfo.ppEnabledExtensionNames = requiredExtensions.data();
 
 	VkResult res = vkCreateInstance(&createInfo, nullptr, &instance);
@@ -517,7 +522,11 @@ bool VulkanServer::createDebugCallback() {
 	createInfo.pfnCallback = debugCallbackFnc;
 
 	// Load the extension function to create the callback
-	PFN_vkCreateDebugReportCallbackEXT func = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
+	PFN_vkCreateDebugReportCallbackEXT func =
+			(PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(
+					instance,
+					"vkCreateDebugReportCallbackEXT");
+
 	ERR_FAIL_COND_V(!func, false);
 
 	VkResult res = func(instance, &createInfo, nullptr, &debugCallback);
@@ -540,13 +549,8 @@ void VulkanServer::destroyDebugCallback() {
 }
 
 bool VulkanServer::createSurface() {
-
-	ERR_FAIL_COND_V(!WindowServer::get_singleton()->create_surface(
-							window,
-							instance,
-							&surface),
-			false);
-
+	surface = WindowServer::get_singleton()->get_vulkan_surface(window);
+	ERR_FAIL_COND_V(VK_NULL_HANDLE == surface, false);
 	return true;
 }
 
@@ -621,10 +625,8 @@ bool VulkanServer::createLogicalDevice() {
 			queueIndices.presentationFamilyIndex) {
 		// Create dedicated presentation queue
 		VkDeviceQueueCreateInfo presentationQueueCreateInfo = {};
-		presentationQueueCreateInfo.sType =
-				VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		presentationQueueCreateInfo.queueFamilyIndex =
-				queueIndices.presentationFamilyIndex;
+		presentationQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		presentationQueueCreateInfo.queueFamilyIndex = queueIndices.presentationFamilyIndex;
 		presentationQueueCreateInfo.queueCount = 1;
 		presentationQueueCreateInfo.pQueuePriorities = &priority;
 
@@ -714,26 +716,45 @@ VulkanServer::findQueueFamilies(VkPhysicalDevice p_device) {
 	return indices;
 }
 
-VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(VkPhysicalDevice p_device) {
+VulkanServer::SwapChainSupportDetails VulkanServer::querySwapChainSupport(
+		VkPhysicalDevice p_device) {
+
 	SwapChainSupportDetails chainDetails;
 
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(p_device, surface,
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+			p_device,
+			surface,
 			&chainDetails.capabilities);
 
 	uint32_t formatsCount = 0;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(p_device, surface, &formatsCount, nullptr);
+	vkGetPhysicalDeviceSurfaceFormatsKHR(
+			p_device,
+			surface,
+			&formatsCount,
+			nullptr);
 
 	if (formatsCount > 0) {
 		chainDetails.formats.resize(formatsCount);
-		vkGetPhysicalDeviceSurfaceFormatsKHR(p_device, surface, &formatsCount, chainDetails.formats.data());
+		vkGetPhysicalDeviceSurfaceFormatsKHR(
+				p_device,
+				surface,
+				&formatsCount,
+				chainDetails.formats.data());
 	}
 
 	uint32_t modesCount = 0;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(p_device, surface, &modesCount, nullptr);
+	vkGetPhysicalDeviceSurfacePresentModesKHR(
+			p_device,
+			surface,
+			&modesCount,
+			nullptr);
 
 	if (modesCount > 0) {
 		chainDetails.presentModes.resize(modesCount);
-		vkGetPhysicalDeviceSurfacePresentModesKHR(p_device, surface, &modesCount,
+		vkGetPhysicalDeviceSurfacePresentModesKHR(
+				p_device,
+				surface,
+				&modesCount,
 				chainDetails.presentModes.data());
 	}
 
@@ -2480,18 +2501,15 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format,
 	return success;
 }
 
-VisualServer::VisualServer(RID p_window) :
+VisualServer::VisualServer() :
 		defaultTexture(nullptr),
-		window(p_window),
 		vulkanServer(this) {}
 
 VisualServer::~VisualServer() {}
 
 bool VisualServer::init() {
 
-	ERR_FAIL_COND_V(!vulkanServer.create(window), false);
-
-	WindowServer::get_singleton()->set_drawable(window, true);
+	ERR_FAIL_COND_V(!vulkanServer.create(), false);
 
 	defaultTexture = new Texture(&vulkanServer);
 	ERR_FAIL_COND_V(
@@ -2508,7 +2526,8 @@ void VisualServer::terminate() {
 }
 
 bool VisualServer::can_step() {
-	return WindowServer::get_singleton()->is_drawable(window);
+	//return WindowServer::get_singleton()->is_drawable(window);
+	return true;
 }
 
 void VisualServer::step() {

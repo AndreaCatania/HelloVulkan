@@ -323,10 +323,10 @@ extern std::string _last_error;
 		_err_error_exists = false;                                                         \
 	}
 
-#define WARN_PRINTS(m_string)                                                                                        \
-	{                                                                                                                \
-		_err_print_error(FUNCTION_STR, __FILE__, __LINE__, String(m_string).utf8().get_data(), ERR_HANDLER_WARNING); \
-		_err_error_exists = false;                                                                                   \
+#define WARN_PRINTS(m_string)                                                                                   \
+	{                                                                                                           \
+		_err_print_error(FUNCTION_STR, __FILE__, __LINE__, std::string(m_string).c_str(), ERR_HANDLER_WARNING); \
+		_err_error_exists = false;                                                                              \
 	}
 
 #define WARN_DEPRECATED                                                                                                                                   \

@@ -15,6 +15,8 @@ class ResourceData {
 public:
 	ResourceData() :
 			owner(nullptr) {}
+
+	virtual ~ResourceData() {}
 };
 
 class RID {
@@ -35,7 +37,7 @@ protected:
 	mutable std::set<ResourceData *> resources;
 #endif
 
-public:
+protected:
 	bool _is_owner(const ResourceData *p_res) const {
 
 		if (!p_res)

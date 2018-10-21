@@ -247,9 +247,7 @@ void Main::start() {
 	WindowServer *window_server = new GLFWWindowServer;
 	window_server->init_server();
 
-	RID test_window = WindowServer::get_singleton()->create_window("Hello Vulkan", 500, 500);
-
-	vm = new VisualServer(test_window);
+	vm = new VisualServer();
 	CRASH_COND(!vm->init());
 
 	ticker.init();

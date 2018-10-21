@@ -14,7 +14,12 @@ public:
 	virtual void init_server() = 0;
 	virtual void terminate_server() = 0;
 
+	/** Don't clear the vector */
+	virtual void get_required_extensions(
+			std::vector<const char *> &r_extensions) = 0;
+
 	virtual RID create_window(
+			VkInstance p_vulkan_instance,
 			const char *p_title,
 			int p_width,
 			int p_height) = 0;
@@ -29,15 +34,7 @@ public:
 			int *r_width,
 			int *r_height) = 0;
 
-	/** Don't clear the vector */
-	virtual void get_required_extensions(
-			RID p_window,
-			std::vector<const char *> &r_extensions) = 0;
-
-	virtual bool create_surface(
-			RID p_window,
-			VkInstance p_instance,
-			VkSurfaceKHR *r_surface) = 0;
+	virtual VkSurfaceKHR get_vulkan_surface(RID p_window) const = 0;
 
 	// TODO not sure if should go here
 	virtual void fetch_events() = 0;

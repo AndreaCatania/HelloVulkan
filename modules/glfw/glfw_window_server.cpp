@@ -16,7 +16,21 @@ void GLFWWindowServer::terminate_server() {
 	glfwTerminate();
 }
 
-RID GLFWWindowServer::create_window(const char *p_title, int p_width, int p_height) {
+void GLFWWindowServer::get_required_extensions(
+		std::vector<const char *> &r_extensions) {
+
+	uint32_t count = 0;
+	const char **requiredExtensions;
+
+	requiredExtensions = glfwGetRequiredInstanceExtensions(&count);
+	r_extensions.insert(r_extensions.end(), &requiredExtensions[0], &requiredExtensions[count]);
+}
+
+RID GLFWWindowServer::create_window(
+		VkInstance p_vulkan_instance,
+		const char *p_title,
+		int p_width,
+		int p_height) {
 
 	GLFWwindow *glfw_window;
 
@@ -32,7 +46,7 @@ RID GLFWWindowServer::create_window(const char *p_title, int p_width, int p_heig
 		ERR_FAIL_V(RID());
 	}
 
-	GLFWWindowData *window = new GLFWWindowData;
+	GLFWWindowData *window = new GLFWWindowData(p_vulkan_instance);
 	window->set_glfw_window(glfw_window);
 
 	return window_owner.make_rid(window);
@@ -73,34 +87,11 @@ void GLFWWindowServer::get_window_size(RID p_window, int *r_width, int *r_height
 	glfwGetWindowSize(window->glfw_window, r_width, r_height);
 }
 
-void GLFWWindowServer::get_required_extensions(
-		RID p_window,
-		std::vector<const char *> &r_extensions) {
-
-	//const GLFWWindowData *window = window_owner.get(p_window);
-	//DEBUG_ONLY(ERR_FAIL_COND(!window));
-
-	uint32_t count = 0;
-	const char **requiredExtensions;
-
-	requiredExtensions = glfwGetRequiredInstanceExtensions(&count);
-	r_extensions.insert(r_extensions.end(), &requiredExtensions[0], &requiredExtensions[count]);
-}
-
-bool GLFWWindowServer::create_surface(
-		RID p_window,
-		VkInstance p_instance,
-		VkSurfaceKHR *r_surface) {
+VkSurfaceKHR GLFWWindowServer::get_vulkan_surface(RID p_window) const {
 
 	const GLFWWindowData *window = window_owner.get(p_window);
-	DEBUG_ONLY(ERR_FAIL_COND_V(!window, false));
-	DEBUG_ONLY(ERR_FAIL_COND_V(!window->glfw_window, false));
-
-	return VK_SUCCESS == glfwCreateWindowSurface(
-								 p_instance,
-								 window->glfw_window,
-								 nullptr,
-								 r_surface);
+	DEBUG_ONLY(ERR_FAIL_COND_V(!window, VK_NULL_HANDLE));
+	return window->surface;
 }
 
 void GLFWWindowServer::fetch_events() {

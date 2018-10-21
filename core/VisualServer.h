@@ -158,7 +158,7 @@ public:
 
 	bool enableValidationLayer();
 
-	bool create(RID p_window);
+	bool create();
 	void destroy();
 
 	void waitIdle();
@@ -430,11 +430,10 @@ class VisualServer {
 	friend class VulkanServer;
 
 	Texture *defaultTexture;
-	RID window;
 	VulkanServer vulkanServer;
 
 public:
-	VisualServer(RID p_window);
+	VisualServer();
 	~VisualServer();
 
 	bool init();
