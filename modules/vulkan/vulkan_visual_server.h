@@ -6,6 +6,45 @@
 #include "thirdparty/vulkan/vulkan.h"
 #include <vector>
 
+// Physical device and Queue Family
+//
+// For each GPU or CPU
+//		|
+//		Physical Device [The available queue families depends on the device]
+//			|
+//			|- Queue Family 1 (Different capabilities respect other queue families)
+//			|	|- Queue 1
+//			|	|- Queue 2
+//			|
+//			|- Queue Family 2 (Different capabilities respect other queue families)
+//			|	|- Queue 1
+//			|
+//			|- Queue Family 3 (Different capabilities respect other queue families)
+//			|	|- Queue 1
+//			|	|- Queue 2
+//			|	|- Queue 3
+//			.
+//
+//
+// Physical Device
+//		The Physical Device provide different feature to use depending on the
+//		application that we are developing.
+//
+// Logical Device
+//		This object instead contains only the required device feature.
+//
+//		So:
+//			The Logical Device is the most important object because
+//			it represents the Physical Hardware with all the loaded extensions,
+//			features, queue, etc...
+//			This mean that all operations must be executed on the Logical Device
+//			that know exactly which part of Physical Device to call.
+//
+//		Operations:
+//			Create images and Buffers, set pipeline, Load shaders,
+//			record commands, etc...
+//
+
 class VulkanVisualServer : public VisualServer {
 
 	mutable RID_owner<RenderTarget> render_target_owner;
@@ -17,6 +56,8 @@ class VulkanVisualServer : public VisualServer {
 
 	VkPhysicalDevice physical_device;
 	VkDeviceSize physical_device_min_uniform_buffer_offset_alignment;
+
+	VkDevice logical_device;
 
 public:
 	VulkanVisualServer();
@@ -37,7 +78,7 @@ private:
 
 	/** PHYSICAL DEVICE */
 
-	bool select_physical_device();
+	bool select_physical_device(VkSurfaceKHR p_initialization_surface);
 
 	/// Returns the index in the array with best device,
 	/// depending on device_type
@@ -49,7 +90,7 @@ private:
 
 	/** CREATE LOGICAL DEVICE */
 
-	bool create_logical_device();
+	bool create_logical_device(VkSurfaceKHR p_initialization_surface);
 
 	/** MISCELLANEOUS */
 
@@ -80,14 +121,16 @@ private:
 		}
 	};
 
-	static QueueFamilyIndices find_queue_families(
+	/// Real the queue families of device and returns
+	/// the indices of queue family if they provide the features
+	/// required by this software
+	static QueueFamilyIndices filter_queue_families(
 			VkPhysicalDevice p_device,
 			VkSurfaceKHR p_surface);
 
-	static bool check_extensions_support(
+	static bool are_extensions_supported(
 			const std::vector<const char *> &p_requiredExtensions,
-			std::vector<VkExtensionProperties> &p_availableExtensions,
-			bool verbose = true);
+			std::vector<VkExtensionProperties> &p_availableExtensions);
 
 	static bool check_validation_layers_support(
 			const std::vector<const char *> &p_layers);

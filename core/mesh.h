@@ -4,7 +4,7 @@
 #include "hellovulkan.h"
 #include "libs/tiny_obj_loader/tiny_obj_loader.h"
 
-class VisualServer;
+class OldVisualServer;
 class VulkanServer;
 class Mesh;
 class Texture;

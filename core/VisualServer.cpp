@@ -42,7 +42,7 @@ bool readFile(const std::string &filename, std::vector<char> &r_out) {
 	return true;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
+VKAPI_ATTR VkBool32 VKAPI_CALL old_debugCallbackFnc(
 		VkDebugReportFlagsEXT flags,
 		VkDebugReportObjectTypeEXT objType,
 		uint64_t obj,
@@ -117,7 +117,7 @@ void Camera::setNearFar(float p_near, float p_far) {
 	isProjectionDirty = true;
 }
 
-VulkanServer::VulkanServer(VisualServer *p_visualServer) :
+VulkanServer::VulkanServer(OldVisualServer *p_visualServer) :
 		visualServer(p_visualServer),
 		instance(VK_NULL_HANDLE),
 		debugCallback(VK_NULL_HANDLE),
@@ -519,7 +519,7 @@ bool VulkanServer::createDebugCallback() {
 	VkDebugReportCallbackCreateInfoEXT createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
 	createInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
-	createInfo.pfnCallback = debugCallbackFnc;
+	createInfo.pfnCallback = old_debugCallbackFnc;
 
 	// Load the extension function to create the callback
 	PFN_vkCreateDebugReportCallbackEXT func =
@@ -686,8 +686,7 @@ void VulkanServer::lockupDeviceQueue() {
 	print_verbose("Device queue lockup success");
 }
 
-VulkanServer::QueueFamilyIndices
-VulkanServer::findQueueFamilies(VkPhysicalDevice p_device) {
+VulkanServer::QueueFamilyIndices VulkanServer::findQueueFamilies(VkPhysicalDevice p_device) {
 
 	QueueFamilyIndices indices;
 
@@ -701,14 +700,17 @@ VulkanServer::findQueueFamilies(VkPhysicalDevice p_device) {
 	vkGetPhysicalDeviceQueueFamilyProperties(p_device, &queueCounts, queueProperties.data());
 
 	for (int i = queueProperties.size() - 1; 0 <= i; --i) {
-		if (queueProperties[i].queueCount > 0 &&
+		if (
+				queueProperties[i].queueCount > 0 &&
 				queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+
 			indices.graphicsFamilyIndex = i;
 		}
 
 		VkBool32 supported = false;
 		vkGetPhysicalDeviceSurfaceSupportKHR(p_device, i, surface, &supported);
 		if (queueProperties[i].queueCount > 0 && supported) {
+
 			indices.presentationFamilyIndex = i;
 		}
 	}
@@ -2024,10 +2026,12 @@ bool checkExtensionsSupport(
 					std::string("\textension: ") +
 					std::string(p_requiredExtensions[i]) +
 					std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
-		if (found)
+		if (!found) {
 			missing = true;
+			break;
+		}
 	}
-	return missing;
+	return !missing;
 }
 
 bool VulkanServer::checkInstanceExtensionsSupport(
@@ -2501,13 +2505,13 @@ bool VulkanServer::transitionImageLayout(VkImage p_image, VkFormat p_format,
 	return success;
 }
 
-VisualServer::VisualServer() :
+OldVisualServer::OldVisualServer() :
 		defaultTexture(nullptr),
 		vulkanServer(this) {}
 
-VisualServer::~VisualServer() {}
+OldVisualServer::~OldVisualServer() {}
 
-bool VisualServer::init() {
+bool OldVisualServer::init() {
 
 	ERR_FAIL_COND_V(!vulkanServer.create(), false);
 
@@ -2520,25 +2524,25 @@ bool VisualServer::init() {
 	return true;
 }
 
-void VisualServer::terminate() {
+void OldVisualServer::terminate() {
 	delete defaultTexture;
 	vulkanServer.destroy();
 }
 
-bool VisualServer::can_step() {
+bool OldVisualServer::can_step() {
 	//return WindowServer::get_singleton()->is_drawable(window);
 	return true;
 }
 
-void VisualServer::step() {
+void OldVisualServer::step() {
 	WindowServer::get_singleton()->fetch_events();
 	vulkanServer.draw();
 }
 
-void VisualServer::addMesh(Mesh *p_mesh) {
+void OldVisualServer::addMesh(Mesh *p_mesh) {
 	vulkanServer.addMesh(p_mesh);
 }
 
-void VisualServer::removeMesh(Mesh *p_mesh) {
+void OldVisualServer::removeMesh(Mesh *p_mesh) {
 	vulkanServer.removeMesh(p_mesh);
 }

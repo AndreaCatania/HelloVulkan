@@ -4,7 +4,7 @@
 #include "hellovulkan.h"
 #include <chrono>
 
-class VisualServer;
+class OldVisualServer;
 class Mesh;
 struct MeshHandle;
 class Texture;
@@ -154,7 +154,7 @@ public:
 		std::vector<VkPresentModeKHR> presentModes;
 	};
 
-	VulkanServer(VisualServer *p_visualServer);
+	VulkanServer(OldVisualServer *p_visualServer);
 
 	bool enableValidationLayer();
 
@@ -181,7 +181,7 @@ public:
 
 private:
 	RID window;
-	VisualServer *visualServer;
+	OldVisualServer *visualServer;
 
 	VkInstance instance;
 	VkDebugReportCallbackEXT debugCallback;
@@ -426,15 +426,15 @@ private:
 	bool transitionImageLayout(VkImage p_image, VkFormat p_format, VkImageLayout p_oldLayout, VkImageLayout p_newLayout);
 };
 
-class VisualServer {
+class OldVisualServer {
 	friend class VulkanServer;
 
 	Texture *defaultTexture;
 	VulkanServer vulkanServer;
 
 public:
-	VisualServer();
-	~VisualServer();
+	OldVisualServer();
+	~OldVisualServer();
 
 	bool init();
 	void terminate();

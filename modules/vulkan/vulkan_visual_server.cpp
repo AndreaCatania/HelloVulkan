@@ -26,9 +26,23 @@ VulkanVisualServer::VulkanVisualServer() :
 void VulkanVisualServer::init() {
 
 	CRASH_COND(!create_vulkan_instance());
+
+	// Create a test surface to get some information and destroy it
+	RID initialization_window = WindowServer::get_singleton()->create_window(
+			vulkan_instance,
+			"InitializationWindow0000",
+			1,
+			1);
+
+	VkSurfaceKHR initialization_surface =
+			WindowServer::get_singleton()->get_vulkan_surface(
+					initialization_window);
+
 	CRASH_COND(!initialize_debug_callback());
-	CRASH_COND(!select_physical_device());
-	CRASH_COND(!create_logical_device());
+	CRASH_COND(!select_physical_device(initialization_surface));
+	CRASH_COND(!create_logical_device(initialization_surface));
+
+	WindowServer::get_singleton()->free_window(initialization_window);
 }
 
 void VulkanVisualServer::terminate() {
@@ -132,7 +146,9 @@ bool VulkanVisualServer::initialize_debug_callback() {
 	return true;
 }
 
-bool VulkanVisualServer::select_physical_device() {
+bool VulkanVisualServer::select_physical_device(VkSurfaceKHR p_initialization_surface) {
+
+	print_verbose("Select physical device");
 
 	uint32_t device_count = 0;
 	vkEnumeratePhysicalDevices(vulkan_instance, &device_count, nullptr);
@@ -144,22 +160,9 @@ bool VulkanVisualServer::select_physical_device() {
 			&device_count,
 			devices.data());
 
-	// Create a test surface to get some information and destroy it
-	RID test_window = WindowServer::get_singleton()->create_window(
-			vulkan_instance,
-			"TestWindow",
-			1,
-			1);
-
-	VkSurfaceKHR test_surface =
-			WindowServer::get_singleton()->get_vulkan_surface(
-					test_window);
-
-	print_verbose("Filter devices");
-
 	int index = filter_physical_devices(
 			devices,
-			test_surface,
+			p_initialization_surface,
 			VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU);
 
 	if (index < 0) {
@@ -168,7 +171,7 @@ bool VulkanVisualServer::select_physical_device() {
 
 		index = filter_physical_devices(
 				devices,
-				test_surface,
+				p_initialization_surface,
 				VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
 
 		if (index < 0) {
@@ -177,14 +180,12 @@ bool VulkanVisualServer::select_physical_device() {
 
 			index = filter_physical_devices(
 					devices,
-					test_surface,
+					p_initialization_surface,
 					VK_PHYSICAL_DEVICE_TYPE_CPU);
 
 			ERR_FAIL_COND_V(index < 0, false);
 		}
 	}
-
-	WindowServer::get_singleton()->free_window(test_window);
 
 	physical_device = devices[index];
 
@@ -202,6 +203,8 @@ int VulkanVisualServer::filter_physical_devices(
 		const std::vector<VkPhysicalDevice> &p_devices,
 		VkSurfaceKHR p_surface,
 		VkPhysicalDeviceType p_device_type) {
+
+	print_verbose("Filter physical device");
 
 	for (int i = p_devices.size() - 1; 0 <= i; --i) {
 
@@ -234,13 +237,12 @@ int VulkanVisualServer::filter_physical_devices(
 		if (!device_features.geometryShader || !device_features.samplerAnisotropy)
 			continue;
 
-		if (!find_queue_families(p_devices[i], p_surface).isComplete())
+		if (!filter_queue_families(p_devices[i], p_surface).isComplete())
 			continue;
 
-		if (!check_extensions_support(
+		if (!are_extensions_supported(
 					device_extensions,
-					available_extensions,
-					false))
+					available_extensions))
 			continue;
 
 		// Check if swap chain is supported by this device
@@ -258,7 +260,71 @@ int VulkanVisualServer::filter_physical_devices(
 	return -1;
 }
 
-bool VulkanVisualServer::create_logical_device() {
+bool VulkanVisualServer::create_logical_device(VkSurfaceKHR p_initialization_surface) {
+
+	print_verbose("Selecting Queue Families of chosen Physical Device.");
+
+	QueueFamilyIndices queue_families = filter_queue_families(
+			physical_device,
+			p_initialization_surface);
+
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfoArray;
+
+	float priority = 1.f;
+
+	// Information to create graphycs queue
+
+	VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
+	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	graphicsQueueCreateInfo.queueFamilyIndex = queue_families.graphicsFamilyIndex;
+	graphicsQueueCreateInfo.queueCount = 1;
+	graphicsQueueCreateInfo.pQueuePriorities = &priority;
+
+	queueCreateInfoArray.push_back(graphicsQueueCreateInfo);
+
+	if (queue_families.graphicsFamilyIndex != queue_families.presentationFamilyIndex) {
+
+		// Create dedicated presentation queue in case the graphycs queue doesn't
+		// support presentation
+
+		VkDeviceQueueCreateInfo presentationQueueCreateInfo = {};
+		presentationQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		presentationQueueCreateInfo.queueFamilyIndex = queue_families.presentationFamilyIndex;
+		presentationQueueCreateInfo.queueCount = 1;
+		presentationQueueCreateInfo.pQueuePriorities = &priority;
+
+		queueCreateInfoArray.push_back(presentationQueueCreateInfo);
+	}
+
+	// Request physica device feature.
+	VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+	physicalDeviceFeatures.samplerAnisotropy = VK_TRUE;
+
+	// Information to create logical device
+	VkDeviceCreateInfo ldevice_create_infos = {};
+	ldevice_create_infos.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	ldevice_create_infos.queueCreateInfoCount = queueCreateInfoArray.size();
+	ldevice_create_infos.pQueueCreateInfos = queueCreateInfoArray.data();
+	ldevice_create_infos.pEnabledFeatures = &physicalDeviceFeatures;
+	ldevice_create_infos.enabledExtensionCount = device_extensions.size();
+	ldevice_create_infos.ppEnabledExtensionNames = device_extensions.data();
+
+	if (is_validation_layer_enabled()) {
+		ldevice_create_infos.enabledLayerCount = layers.size();
+		ldevice_create_infos.ppEnabledLayerNames = layers.data();
+	} else {
+		ldevice_create_infos.enabledLayerCount = 0;
+	}
+
+	VkResult res = vkCreateDevice(
+			physical_device,
+			&ldevice_create_infos,
+			nullptr,
+			&logical_device);
+
+	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
+	print_verbose("Logical device created.");
+	return true;
 }
 
 void VulkanVisualServer::get_physical_device_swap_chain_details(
@@ -308,7 +374,7 @@ void VulkanVisualServer::get_physical_device_swap_chain_details(
 	}
 }
 
-VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::find_queue_families(
+VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::filter_queue_families(
 		VkPhysicalDevice p_device,
 		VkSurfaceKHR p_surface) {
 
@@ -320,17 +386,18 @@ VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::find_queue_families(
 	if (queueCounts <= 0)
 		return indices;
 
-	std::vector<VkQueueFamilyProperties> queueProperties(queueCounts);
+	std::vector<VkQueueFamilyProperties> queue_props(queueCounts);
 	vkGetPhysicalDeviceQueueFamilyProperties(
 			p_device,
 			&queueCounts,
-			queueProperties.data());
+			queue_props.data());
 
-	for (int i = queueProperties.size() - 1; 0 <= i; --i) {
-		if (
-				queueProperties[i].queueCount > 0 &&
-				queueProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+	for (int i = queue_props.size() - 1; 0 <= i; --i) {
 
+		if (queue_props[i].queueCount <= 0)
+			continue;
+
+		if (queue_props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			indices.graphicsFamilyIndex = i;
 		}
 
@@ -341,7 +408,7 @@ VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::find_queue_families(
 				p_surface,
 				&supported);
 
-		if (queueProperties[i].queueCount > 0 && supported) {
+		if (supported) {
 			indices.presentationFamilyIndex = i;
 		}
 	}
@@ -349,31 +416,35 @@ VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::find_queue_families(
 	return indices;
 }
 
-bool VulkanVisualServer::check_extensions_support(
-		const std::vector<const char *> &p_requiredExtensions,
-		std::vector<VkExtensionProperties> &p_availableExtensions,
-		bool verbose) {
+bool VulkanVisualServer::are_extensions_supported(
+		const std::vector<const char *> &p_required_extensions,
+		std::vector<VkExtensionProperties> &p_available_extensions) {
 
 	bool missing = false;
-	for (size_t i = 0; i < p_requiredExtensions.size(); ++i) {
+
+	for (size_t i = 0; i < p_required_extensions.size(); ++i) {
 		bool found = false;
-		for (size_t j = 0; j < p_availableExtensions.size(); ++j) {
-			if (strcmp(p_requiredExtensions[i],
-						p_availableExtensions[j].extensionName) == 0) {
+		for (size_t j = 0; j < p_available_extensions.size(); ++j) {
+			if (strcmp(
+						p_required_extensions[i],
+						p_available_extensions[j].extensionName) == 0) {
 				found = true;
 				break;
 			}
 		}
 
-		if (verbose)
-			print_verbose(
-					std::string("\textension: ") +
-					std::string(p_requiredExtensions[i]) +
-					std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
-		if (found)
+		print_verbose(
+				std::string("\textension: ") +
+				std::string(p_required_extensions[i]) +
+				std::string(found ? " [Available]" : " [NOT AVAILABLE]"));
+
+		if (!found) {
 			missing = true;
+			break;
+		}
 	}
-	return missing;
+
+	return !missing;
 }
 
 bool VulkanVisualServer::check_validation_layers_support(
@@ -430,7 +501,7 @@ bool VulkanVisualServer::check_instance_extensions_support(
 
 	print_verbose("Checking if required extensions are available");
 
-	return check_extensions_support(
+	return are_extensions_supported(
 			p_requiredExtensions,
 			availableExtensions);
 }

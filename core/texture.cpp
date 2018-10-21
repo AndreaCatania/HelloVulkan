@@ -7,7 +7,7 @@
 #include "core/error_macros.h"
 #include "core/print_string.h"
 
-Texture::Texture(VisualServer *p_visualServer) :
+Texture::Texture(OldVisualServer *p_visualServer) :
 		Texture(p_visualServer->getVulkanServer()) {}
 
 Texture::Texture(VulkanServer *p_vulkanServer) :

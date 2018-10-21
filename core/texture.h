@@ -3,7 +3,7 @@
 
 #include "hellovulkan.h"
 
-class VisualServer;
+class OldVisualServer;
 class VulkanServer;
 class Mesh;
 
@@ -23,7 +23,7 @@ class Texture {
 
 public:
 	Texture(VulkanServer *p_vulkanServer);
-	Texture(VisualServer *p_visualServer);
+	Texture(OldVisualServer *p_visualServer);
 	~Texture();
 	bool load(const std::string &p_path);
 

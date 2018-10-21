@@ -8,6 +8,7 @@
 #include "core/texture.h"
 #include "libs/glm/gtc/random.hpp"
 #include "modules/glfw/glfw_window_server.h"
+#include "modules/vulkan/vulkan_visual_server.h"
 
 #define TWO_CUBES_TEST 0
 #define CLOUDY_CUBES_TEST 1
@@ -34,7 +35,7 @@ private:
 };
 
 Ticker ticker;
-VisualServer *vm;
+OldVisualServer *vm;
 
 void cubeMaker(Mesh *mesh) {
 
@@ -247,7 +248,10 @@ void Main::start() {
 	WindowServer *window_server = new GLFWWindowServer;
 	window_server->init_server();
 
-	vm = new VisualServer();
+	VisualServer *vs = new VulkanVisualServer;
+	vs->init();
+
+	vm = new OldVisualServer();
 	CRASH_COND(!vm->init());
 
 	ticker.init();
