@@ -40,10 +40,7 @@ Execute(Mkdir('bin'))
 
 
 """ Setup lunarG """
-relative_sdk_path = methods.setup_lunarg(platform)
-rel_bin_sdk_path = relative_sdk_path.replace("./bin", "./")
-lunarg_sdk_path = os.path.abspath(relative_sdk_path)
-if lunarg_sdk_path =="":
+if not methods.setup_lunarg(platform):
     print "LunarG SDK setup failed"
     Exit(126)
 
@@ -51,9 +48,9 @@ if lunarg_sdk_path =="":
 """ Set shaders builders"""
 env.vulkan_glslangValidator_path = ""
 if platform == 'windows':
-    env.vulkan_glslangValidator_path = lunarg_sdk_path + r"\glslangValidator"
+    env.vulkan_glslangValidator_path = r"..\bin\glslangValidator"
 elif platform == 'x11':
-    env.vulkan_glslangValidator_path = lunarg_sdk_path + r"/glslangValidator"
+    env.vulkan_glslangValidator_path = r"../bin/glslangValidator"
 
 
 """ Project building """
@@ -62,7 +59,6 @@ env.executable_name = executable_name
 env.executable_dir = executable_dir
 env.platform = platform
 env.debug = debug
-env.lunarg_sdk_path = lunarg_sdk_path
 
 env.__class__.add_source_files = methods.add_source_files
 env.__class__.add_library = methods.add_library
@@ -81,16 +77,9 @@ if not verbose:
 if debug:
     env.Append(CPPDEFINES=['DEBUG_ENABLED'])
     env.Append(CCFLAGS=['-ggdb'])
-    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=' + rel_bin_sdk_path})
+    env.Append(CPPDEFINES={'VULKAN_EXPLICIT_LAYERS' : 'VK_LAYER_PATH=./'})
 
-# TODO remove RPATH and setup all shadered object inside bin
-# Because it doesn't work with Windows.
-# A possible solution would be put these libraries inside lib folder
-# But in this moment I think that is better to put all dependecy inside the
-# Executable dir Bin
-env.Append(RPATH = env.Literal(
-    os.path.join('\\$$ORIGIN', os.pardir, rel_bin_sdk_path)))
-
+env.Append(LIBPATH=[executable_dir])
 
 Export('env')
 

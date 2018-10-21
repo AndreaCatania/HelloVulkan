@@ -180,7 +180,12 @@ import tarfile
 def setup_lunarg(platform):
 
     sdk_archive_path = download_lunarg(platform)
-    sdk_base_path = os.path.dirname(sdk_archive_path)
+
+    # Extract all inside bin folder to avoid to use rpath
+    # and runpath, because it's not available in windows.
+    # Another solution would be use setup SharedObject inside
+    # Lib folder. But in this moment I prefer don't touch it
+    sdk_base_path = './bin'
     sdk_setup_proof_path = sdk_base_path + "/SETUP_SUCCESS"
 
     if os.path.exists(sdk_setup_proof_path):
@@ -188,10 +193,10 @@ def setup_lunarg(platform):
             " To re-install it remove this file: " + \
             sdk_setup_proof_path
 
-        return sdk_base_path
+        return True
 
     if sdk_archive_path == "":
-        return ""
+        return False
 
     if sdk_archive_path.endswith('.tar.gz'):
 
@@ -231,13 +236,13 @@ def setup_lunarg(platform):
 
     else:
         print "Downloaded LunarG SDK extension not supported"
-        return ""
+        return False
 
     with open(sdk_setup_proof_path, "w") as f:
         f.write("success")
 
     print "LunarG SDK installation success"
-    return sdk_base_path
+    return True
 
 
 def download_lunarg(platform):

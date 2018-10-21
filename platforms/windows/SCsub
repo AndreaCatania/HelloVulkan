@@ -8,7 +8,6 @@ executable_name = env.executable_name
 # Define vulkan library
 vulkan_library_name = "vulkan-1"
 
-env.Prepend(LIBPATH=[env.lunarg_sdk_path])
 env.Prepend(LIBS=[vulkan_library_name])
 # ~TODO put this inside a module please
 
