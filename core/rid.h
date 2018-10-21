@@ -30,8 +30,10 @@ public:
 };
 
 class RID_owner_base {
+#ifdef DEBUG_ENABLED
 protected:
 	mutable std::set<ResourceData *> resources;
+#endif
 
 public:
 	bool _is_owner(const ResourceData *p_res) const {
@@ -49,16 +51,23 @@ public:
 		return p_res->owner == this;
 	}
 
-	bool set_owner(ResourceData *r_data, RID_owner_base *p_owner) {
-		if (r_data->owner)
-			return false;
+	void _make_rid(RID &r_rid, ResourceData *p_data) {
+		DEBUG_ONLY(ERR_FAIL_COND(p_data->owner));
+		r_rid.data = p_data;
+		p_data->owner = this;
 
-		r_data->owner = p_owner;
+#ifdef DEBUG_ENABLED
+		resources.insert(p_data);
+#endif
 	}
 
-	bool set_data(RID &r_rid, ResourceData *p_data) {
-		r_rid.data = p_data;
-		return set_owner(p_data, this);
+	void _release(ResourceData *p_data) {
+		DEBUG_ONLY(ERR_FAIL_COND(!_is_owner(p_data)));
+		p_data->owner = nullptr;
+
+#ifdef DEBUG_ENABLED
+		resources.erase(resources.find(p_data));
+#endif
 	}
 };
 
@@ -67,45 +76,22 @@ class RID_owner : public RID_owner_base {
 
 public:
 	RID make_rid(T *r_resource) {
-
 		RID r;
-		const bool should_be_register = set_data(r, r_resource);
-		if (should_be_register) {
-			resources.insert(r_resource);
-		} else {
-			WARN_PRINT("This resource was already registered");
-		}
+		_make_rid(r, r_resource);
 		return r;
 	}
 
 	void release(RID &r_rid) {
-		ERR_FAIL_COND(!is_owner(r_rid));
-
 		ResourceData *rd = r_rid.get_data();
-
-		set_owner(rd, nullptr);
-
-#ifdef DEBUG_ENABLED
-		resources.erase(resources.find(rd));
-#endif
+		_release(rd);
 	}
 
 	bool is_owner(const RID &p_rid) const {
-
 		return _is_owner(p_rid.get_data());
 	}
 
 	T *get(const RID &p_rid) const {
-
-#ifdef DEBUG_ENABLED
-		if (p_rid.get_data()) {
-
-			ERR_FAIL_COND_V(
-					resources.find(p_rid.get_data()) == resources.end(),
-					nullptr);
-		}
-#endif
-
+		DEBUG_ONLY(ERR_FAIL_COND_V(!is_owner(p_rid), nullptr));
 		return static_cast<T *>(p_rid.get_data());
 	}
 };
