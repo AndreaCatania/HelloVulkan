@@ -47,6 +47,28 @@
 
 class VulkanVisualServer : public VisualServer {
 
+	struct QueueFamilyIndices {
+		int graphics_family_index = -1;
+		int presentation_family_index = -1;
+
+		bool is_complete() {
+
+			if (graphics_family_index == -1)
+				return false;
+
+			if (presentation_family_index == -1)
+				return false;
+
+			return true;
+		}
+	};
+
+	struct PhysicalDeviceSwapChainDetails {
+		VkSurfaceCapabilitiesKHR capabilities;
+		std::vector<VkSurfaceFormatKHR> formats;
+		std::vector<VkPresentModeKHR> present_modes;
+	};
+
 	mutable RID_owner<RenderTarget> render_target_owner;
 
 	VkInstance vulkan_instance;
@@ -56,8 +78,11 @@ class VulkanVisualServer : public VisualServer {
 
 	VkPhysicalDevice physical_device;
 	VkDeviceSize physical_device_min_uniform_buffer_offset_alignment;
+	QueueFamilyIndices queue_families;
 
 	VkDevice logical_device;
+	VkQueue graphics_queue;
+	VkQueue presentation_queue;
 
 public:
 	VulkanVisualServer();
@@ -88,38 +113,18 @@ private:
 			VkSurfaceKHR p_surface,
 			VkPhysicalDeviceType p_device_type);
 
-	/** CREATE LOGICAL DEVICE */
+	/** LOGICAL DEVICE */
 
-	bool create_logical_device(VkSurfaceKHR p_initialization_surface);
+	bool create_logical_device();
+
+	void lockup_queues();
 
 	/** MISCELLANEOUS */
-
-	struct PhysicalDeviceSwapChainDetails {
-		VkSurfaceCapabilitiesKHR capabilities;
-		std::vector<VkSurfaceFormatKHR> formats;
-		std::vector<VkPresentModeKHR> present_modes;
-	};
 
 	static void get_physical_device_swap_chain_details(
 			VkPhysicalDevice p_device,
 			VkSurfaceKHR p_surface,
 			PhysicalDeviceSwapChainDetails *r_details);
-
-	struct QueueFamilyIndices {
-		int graphicsFamilyIndex = -1;
-		int presentationFamilyIndex = -1;
-
-		bool isComplete() {
-
-			if (graphicsFamilyIndex == -1)
-				return false;
-
-			if (presentationFamilyIndex == -1)
-				return false;
-
-			return true;
-		}
-	};
 
 	/// Real the queue families of device and returns
 	/// the indices of queue family if they provide the features

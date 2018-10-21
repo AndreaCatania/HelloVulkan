@@ -1785,7 +1785,7 @@ bool VulkanServer::createCommandPool() {
 
 	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 
-	print_verbose("Command pool craeted");
+	print_verbose("Command pool created");
 	return true;
 }
 

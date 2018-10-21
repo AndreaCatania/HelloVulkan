@@ -21,16 +21,18 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 
 VulkanVisualServer::VulkanVisualServer() :
 		VisualServer() {
+	// TODO Please initialize all parameters here
 }
 
 void VulkanVisualServer::init() {
 
 	CRASH_COND(!create_vulkan_instance());
+	CRASH_COND(!initialize_debug_callback());
 
-	// Create a test surface to get some information and destroy it
+	// Create a surface just to get some information
 	RID initialization_window = WindowServer::get_singleton()->create_window(
 			vulkan_instance,
-			"InitializationWindow0000",
+			"InitializationWindow",
 			1,
 			1);
 
@@ -38,14 +40,20 @@ void VulkanVisualServer::init() {
 			WindowServer::get_singleton()->get_vulkan_surface(
 					initialization_window);
 
-	CRASH_COND(!initialize_debug_callback());
 	CRASH_COND(!select_physical_device(initialization_surface));
-	CRASH_COND(!create_logical_device(initialization_surface));
+
+	queue_families = filter_queue_families(
+			physical_device,
+			initialization_surface);
 
 	WindowServer::get_singleton()->free_window(initialization_window);
+
+	CRASH_COND(!create_logical_device());
+	lockup_queues();
 }
 
 void VulkanVisualServer::terminate() {
+	// TODO please implement the terminate function
 }
 
 RID VulkanVisualServer::create_render_target(RID p_window) {
@@ -237,7 +245,7 @@ int VulkanVisualServer::filter_physical_devices(
 		if (!device_features.geometryShader || !device_features.samplerAnisotropy)
 			continue;
 
-		if (!filter_queue_families(p_devices[i], p_surface).isComplete())
+		if (!filter_queue_families(p_devices[i], p_surface).is_complete())
 			continue;
 
 		if (!are_extensions_supported(
@@ -260,13 +268,9 @@ int VulkanVisualServer::filter_physical_devices(
 	return -1;
 }
 
-bool VulkanVisualServer::create_logical_device(VkSurfaceKHR p_initialization_surface) {
+bool VulkanVisualServer::create_logical_device() {
 
 	print_verbose("Selecting Queue Families of chosen Physical Device.");
-
-	QueueFamilyIndices queue_families = filter_queue_families(
-			physical_device,
-			p_initialization_surface);
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfoArray;
 
@@ -276,20 +280,20 @@ bool VulkanVisualServer::create_logical_device(VkSurfaceKHR p_initialization_sur
 
 	VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
 	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	graphicsQueueCreateInfo.queueFamilyIndex = queue_families.graphicsFamilyIndex;
+	graphicsQueueCreateInfo.queueFamilyIndex = queue_families.graphics_family_index;
 	graphicsQueueCreateInfo.queueCount = 1;
 	graphicsQueueCreateInfo.pQueuePriorities = &priority;
 
 	queueCreateInfoArray.push_back(graphicsQueueCreateInfo);
 
-	if (queue_families.graphicsFamilyIndex != queue_families.presentationFamilyIndex) {
+	if (queue_families.graphics_family_index != queue_families.presentation_family_index) {
 
 		// Create dedicated presentation queue in case the graphycs queue doesn't
 		// support presentation
 
 		VkDeviceQueueCreateInfo presentationQueueCreateInfo = {};
 		presentationQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		presentationQueueCreateInfo.queueFamilyIndex = queue_families.presentationFamilyIndex;
+		presentationQueueCreateInfo.queueFamilyIndex = queue_families.presentation_family_index;
 		presentationQueueCreateInfo.queueCount = 1;
 		presentationQueueCreateInfo.pQueuePriorities = &priority;
 
@@ -325,6 +329,29 @@ bool VulkanVisualServer::create_logical_device(VkSurfaceKHR p_initialization_sur
 	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
 	print_verbose("Logical device created.");
 	return true;
+}
+
+void VulkanVisualServer::lockup_queues() {
+
+	vkGetDeviceQueue(
+			logical_device,
+			queue_families.graphics_family_index,
+			0,
+			&graphics_queue);
+
+	if (queue_families.graphics_family_index != queue_families.presentation_family_index) {
+		// Lockup dedicated presentation queue
+		vkGetDeviceQueue(
+				logical_device,
+				queue_families.presentation_family_index,
+				0,
+				&presentation_queue);
+	} else {
+		presentation_queue = graphics_queue;
+	}
+
+	WARN_PRINT("Make sure to use a dedicated queue for presentation.");
+	print_verbose("Logical Device queues lockupped done");
 }
 
 void VulkanVisualServer::get_physical_device_swap_chain_details(
@@ -398,7 +425,7 @@ VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::filter_queue_families
 			continue;
 
 		if (queue_props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-			indices.graphicsFamilyIndex = i;
+			indices.graphics_family_index = i;
 		}
 
 		VkBool32 supported = false;
@@ -409,7 +436,7 @@ VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::filter_queue_families
 				&supported);
 
 		if (supported) {
-			indices.presentationFamilyIndex = i;
+			indices.presentation_family_index = i;
 		}
 	}
 
