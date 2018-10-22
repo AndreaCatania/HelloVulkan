@@ -8,8 +8,8 @@ RenderTarget::RenderTarget() :
 void RenderTarget::init(RID p_window) {
 	window = p_window;
 
-	//CRASH_COND(!create_logical_device());
-	//lockup_queues();
+	create_logical_device();
+	lockup_queues();
 }
 
 RID RenderTarget::get_window() {
@@ -111,4 +111,23 @@ void RenderTarget::lockup_queues() {
 	}
 
 	WARN_PRINT("Make sure to use a dedicated queue for presentation.");
+}
+
+void RenderTarget::create_command_pool() {
+
+	const VulkanVisualServer::QueueFamilyIndices &queue_families =
+			VulkanVisualServer::get_singleton()->get_queue_families();
+
+	VkCommandPoolCreateInfo command_pool_create_info = {};
+	command_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	command_pool_create_info.queueFamilyIndex = queue_families.graphics_family_index;
+	command_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+	VkResult res = vkCreateCommandPool(
+			VulkanVisualServer::get_singleton()->get_physical_device(),
+			&command_pool_create_info,
+			nullptr,
+			&graphics_command_pool);
+
+	ERR_FAIL_COND_V(VK_SUCCESS != res, false);
 }

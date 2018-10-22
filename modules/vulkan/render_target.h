@@ -12,6 +12,8 @@ class RenderTarget : public ResourceData {
 	VkQueue graphics_queue;
 	VkQueue presentation_queue;
 
+	VkCommandPool graphics_command_pool;
+
 public:
 	RenderTarget();
 
@@ -22,4 +24,6 @@ public:
 private:
 	void create_logical_device();
 	void lockup_queues();
+
+	void create_command_pool();
 };
