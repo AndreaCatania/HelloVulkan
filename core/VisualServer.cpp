@@ -167,11 +167,14 @@ bool VulkanServer::create() {
 	if (!createDebugCallback())
 		return false;
 
-	window = WindowServer::get_singleton()->create_window(
-			instance,
+	window = WindowServer::get_singleton()->window_create(
 			"Hello Vulkan",
 			500,
 			500);
+
+	WindowServer::get_singleton()->window_set_vulkan_instance(
+			window,
+			instance);
 
 	WindowServer::get_singleton()->set_drawable(window, true);
 
@@ -549,7 +552,7 @@ void VulkanServer::destroyDebugCallback() {
 }
 
 bool VulkanServer::createSurface() {
-	surface = WindowServer::get_singleton()->get_vulkan_surface(window);
+	surface = WindowServer::get_singleton()->window_get_vulkan_surface(window);
 	ERR_FAIL_COND_V(VK_NULL_HANDLE == surface, false);
 	return true;
 }

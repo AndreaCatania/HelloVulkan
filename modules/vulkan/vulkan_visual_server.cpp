@@ -5,6 +5,8 @@
 #include "core/string.h"
 #include "servers/window_server.h"
 
+VulkanVisualServer *VulkanVisualServer::singleton = nullptr;
+
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 		VkDebugReportFlagsEXT flags,
 		VkDebugReportObjectTypeEXT objType,
@@ -21,6 +23,8 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallbackFnc(
 
 VulkanVisualServer::VulkanVisualServer() :
 		VisualServer() {
+
+	singleton = this;
 	// TODO Please initialize all parameters here
 }
 
@@ -30,14 +34,17 @@ void VulkanVisualServer::init() {
 	CRASH_COND(!initialize_debug_callback());
 
 	// Create a surface just to get some information
-	RID initialization_window = WindowServer::get_singleton()->create_window(
-			vulkan_instance,
+	RID initialization_window = WindowServer::get_singleton()->window_create(
 			"InitializationWindow",
 			1,
 			1);
 
+	WindowServer::get_singleton()->window_set_vulkan_instance(
+			initialization_window,
+			vulkan_instance);
+
 	VkSurfaceKHR initialization_surface =
-			WindowServer::get_singleton()->get_vulkan_surface(
+			WindowServer::get_singleton()->window_get_vulkan_surface(
 					initialization_window);
 
 	CRASH_COND(!select_physical_device(initialization_surface));
@@ -46,19 +53,21 @@ void VulkanVisualServer::init() {
 			physical_device,
 			initialization_surface);
 
-	WindowServer::get_singleton()->free_window(initialization_window);
-
-	CRASH_COND(!create_logical_device());
-	lockup_queues();
+	WindowServer::get_singleton()->window_free(initialization_window);
 }
 
 void VulkanVisualServer::terminate() {
-	// TODO please implement the terminate function
+	free_debug_callback();
+	free_vulkan_instance();
 }
 
 RID VulkanVisualServer::create_render_target(RID p_window) {
 
 	RenderTarget *rt = new RenderTarget();
+
+	WindowServer::get_singleton()->window_set_vulkan_instance(
+			p_window,
+			vulkan_instance);
 
 	rt->init(p_window);
 
@@ -66,6 +75,16 @@ RID VulkanVisualServer::create_render_target(RID p_window) {
 }
 
 void VulkanVisualServer::destroy_render_target(RID p_render_target) {
+
+	RenderTarget *rt = render_target_owner.get(p_render_target);
+	ERR_FAIL_COND(!rt);
+
+	WindowServer::get_singleton()->window_set_vulkan_instance(
+			rt->get_window(),
+			VK_NULL_HANDLE);
+
+	render_target_owner.release(p_render_target);
+	delete rt;
 }
 
 bool VulkanVisualServer::is_validation_layer_enabled() const {
@@ -124,6 +143,14 @@ bool VulkanVisualServer::create_vulkan_instance() {
 	return true;
 }
 
+void VulkanVisualServer::free_vulkan_instance() {
+	if (vulkan_instance == VK_NULL_HANDLE)
+		return;
+	vkDestroyInstance(vulkan_instance, nullptr);
+	vulkan_instance = VK_NULL_HANDLE;
+	print_verbose("Vulkan instance destroyed");
+}
+
 bool VulkanVisualServer::initialize_debug_callback() {
 	if (!is_validation_layer_enabled())
 		return true;
@@ -154,7 +181,25 @@ bool VulkanVisualServer::initialize_debug_callback() {
 	return true;
 }
 
-bool VulkanVisualServer::select_physical_device(VkSurfaceKHR p_initialization_surface) {
+void VulkanVisualServer::free_debug_callback() {
+
+	if (debug_callback_handle == VK_NULL_HANDLE)
+		return;
+
+	PFN_vkDestroyDebugReportCallbackEXT func =
+			(PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
+					vulkan_instance,
+					"vkDestroyDebugReportCallbackEXT");
+
+	ERR_FAIL_COND(!func);
+
+	func(vulkan_instance, debug_callback_handle, nullptr);
+	debug_callback_handle = VK_NULL_HANDLE;
+	print_verbose("Debug callback destroyed");
+}
+
+bool VulkanVisualServer::select_physical_device(
+		VkSurfaceKHR p_initialization_surface) {
 
 	print_verbose("Select physical device");
 
@@ -268,92 +313,6 @@ int VulkanVisualServer::filter_physical_devices(
 	return -1;
 }
 
-bool VulkanVisualServer::create_logical_device() {
-
-	print_verbose("Selecting Queue Families of chosen Physical Device.");
-
-	std::vector<VkDeviceQueueCreateInfo> queueCreateInfoArray;
-
-	float priority = 1.f;
-
-	// Information to create graphycs queue
-
-	VkDeviceQueueCreateInfo graphicsQueueCreateInfo = {};
-	graphicsQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	graphicsQueueCreateInfo.queueFamilyIndex = queue_families.graphics_family_index;
-	graphicsQueueCreateInfo.queueCount = 1;
-	graphicsQueueCreateInfo.pQueuePriorities = &priority;
-
-	queueCreateInfoArray.push_back(graphicsQueueCreateInfo);
-
-	if (queue_families.graphics_family_index != queue_families.presentation_family_index) {
-
-		// Create dedicated presentation queue in case the graphycs queue doesn't
-		// support presentation
-
-		VkDeviceQueueCreateInfo presentationQueueCreateInfo = {};
-		presentationQueueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		presentationQueueCreateInfo.queueFamilyIndex = queue_families.presentation_family_index;
-		presentationQueueCreateInfo.queueCount = 1;
-		presentationQueueCreateInfo.pQueuePriorities = &priority;
-
-		queueCreateInfoArray.push_back(presentationQueueCreateInfo);
-	}
-
-	// Request physica device feature.
-	VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
-	physicalDeviceFeatures.samplerAnisotropy = VK_TRUE;
-
-	// Information to create logical device
-	VkDeviceCreateInfo ldevice_create_infos = {};
-	ldevice_create_infos.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	ldevice_create_infos.queueCreateInfoCount = queueCreateInfoArray.size();
-	ldevice_create_infos.pQueueCreateInfos = queueCreateInfoArray.data();
-	ldevice_create_infos.pEnabledFeatures = &physicalDeviceFeatures;
-	ldevice_create_infos.enabledExtensionCount = device_extensions.size();
-	ldevice_create_infos.ppEnabledExtensionNames = device_extensions.data();
-
-	if (is_validation_layer_enabled()) {
-		ldevice_create_infos.enabledLayerCount = layers.size();
-		ldevice_create_infos.ppEnabledLayerNames = layers.data();
-	} else {
-		ldevice_create_infos.enabledLayerCount = 0;
-	}
-
-	VkResult res = vkCreateDevice(
-			physical_device,
-			&ldevice_create_infos,
-			nullptr,
-			&logical_device);
-
-	ERR_FAIL_COND_V(res != VK_SUCCESS, false);
-	print_verbose("Logical device created.");
-	return true;
-}
-
-void VulkanVisualServer::lockup_queues() {
-
-	vkGetDeviceQueue(
-			logical_device,
-			queue_families.graphics_family_index,
-			0,
-			&graphics_queue);
-
-	if (queue_families.graphics_family_index != queue_families.presentation_family_index) {
-		// Lockup dedicated presentation queue
-		vkGetDeviceQueue(
-				logical_device,
-				queue_families.presentation_family_index,
-				0,
-				&presentation_queue);
-	} else {
-		presentation_queue = graphics_queue;
-	}
-
-	WARN_PRINT("Make sure to use a dedicated queue for presentation.");
-	print_verbose("Logical Device queues lockupped done");
-}
-
 void VulkanVisualServer::get_physical_device_swap_chain_details(
 		VkPhysicalDevice p_device,
 		VkSurfaceKHR p_surface,
@@ -407,16 +366,16 @@ VulkanVisualServer::QueueFamilyIndices VulkanVisualServer::filter_queue_families
 
 	QueueFamilyIndices indices;
 
-	uint32_t queueCounts = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(p_device, &queueCounts, nullptr);
+	uint32_t family_count = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(p_device, &family_count, nullptr);
 
-	if (queueCounts <= 0)
+	if (family_count <= 0)
 		return indices;
 
-	std::vector<VkQueueFamilyProperties> queue_props(queueCounts);
+	std::vector<VkQueueFamilyProperties> queue_props(family_count);
 	vkGetPhysicalDeviceQueueFamilyProperties(
 			p_device,
-			&queueCounts,
+			&family_count,
 			queue_props.data());
 
 	for (int i = queue_props.size() - 1; 0 <= i; --i) {

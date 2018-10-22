@@ -47,6 +47,7 @@
 
 class VulkanVisualServer : public VisualServer {
 
+public:
 	struct QueueFamilyIndices {
 		int graphics_family_index = -1;
 		int presentation_family_index = -1;
@@ -69,6 +70,7 @@ class VulkanVisualServer : public VisualServer {
 		std::vector<VkPresentModeKHR> present_modes;
 	};
 
+private:
 	mutable RID_owner<RenderTarget> render_target_owner;
 
 	VkInstance vulkan_instance;
@@ -80,9 +82,10 @@ class VulkanVisualServer : public VisualServer {
 	VkDeviceSize physical_device_min_uniform_buffer_offset_alignment;
 	QueueFamilyIndices queue_families;
 
-	VkDevice logical_device;
-	VkQueue graphics_queue;
-	VkQueue presentation_queue;
+	static VulkanVisualServer *singleton;
+
+public:
+	static VulkanVisualServer *get_singleton() { return singleton; }
 
 public:
 	VulkanVisualServer();
@@ -93,13 +96,37 @@ public:
 	virtual RID create_render_target(RID p_window);
 	virtual void destroy_render_target(RID p_render_target);
 
-private:
+public:
 	bool is_validation_layer_enabled() const;
 
+	const std::vector<const char *> &get_layers() const {
+		return layers;
+	}
+
+	const std::vector<const char *> &get_device_extensions() const {
+		return device_extensions;
+	}
+
+	VkPhysicalDevice get_physical_device() const {
+		return physical_device;
+	}
+
+	VkDeviceSize get_physical_device_min_uniform_buffer_offset_alignment() const {
+		return physical_device_min_uniform_buffer_offset_alignment;
+	}
+
+	const QueueFamilyIndices &get_queue_families() const {
+		return queue_families;
+	}
+
+private:
 	/** VULKAN INSTANCE */
 
 	bool create_vulkan_instance();
+	void free_vulkan_instance();
+
 	bool initialize_debug_callback();
+	void free_debug_callback();
 
 	/** PHYSICAL DEVICE */
 
@@ -112,12 +139,6 @@ private:
 			const std::vector<VkPhysicalDevice> &p_devices,
 			VkSurfaceKHR p_surface,
 			VkPhysicalDeviceType p_device_type);
-
-	/** LOGICAL DEVICE */
-
-	bool create_logical_device();
-
-	void lockup_queues();
 
 	/** MISCELLANEOUS */
 

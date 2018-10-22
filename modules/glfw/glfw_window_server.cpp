@@ -26,42 +26,31 @@ void GLFWWindowServer::get_required_extensions(
 	r_extensions.insert(r_extensions.end(), &requiredExtensions[0], &requiredExtensions[count]);
 }
 
-RID GLFWWindowServer::create_window(
-		VkInstance p_vulkan_instance,
+RID GLFWWindowServer::window_create(
 		const char *p_title,
 		int p_width,
 		int p_height) {
 
-	GLFWwindow *glfw_window;
-
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-
-	glfw_window = glfwCreateWindow(p_width, p_height, p_title, nullptr, nullptr);
-
-	if (!glfw_window) {
-		const char *errorMessage;
-		glfwGetError(&errorMessage);
-		ERR_EXPLAIN(errorMessage);
-		ERR_FAIL_V(RID());
-	}
-
-	GLFWWindowData *window = new GLFWWindowData(p_vulkan_instance);
-	window->set_glfw_window(glfw_window);
+	GLFWWindowData *window = new GLFWWindowData(p_title, p_width, p_height);
 
 	return window_owner.make_rid(window);
 }
 
-void GLFWWindowServer::free_window(RID p_window) {
+void GLFWWindowServer::window_free(RID p_window) {
 	GLFWWindowData *window = window_owner.get(p_window);
 
 	DEBUG_ONLY(ERR_FAIL_COND(!window));
-	DEBUG_ONLY(ERR_FAIL_COND(!window->glfw_window));
 
-	glfwDestroyWindow(window->glfw_window);
-	window->glfw_window = nullptr;
 	window_owner.release(p_window);
 	delete window;
+}
+
+void GLFWWindowServer::window_set_vulkan_instance(
+		RID p_window,
+		VkInstance p_vulkan_instance) {
+
+	GLFWWindowData *window = window_owner.get(p_window);
+	window->set_vulkan_instance(p_vulkan_instance);
 }
 
 void GLFWWindowServer::set_drawable(RID p_window, bool p_state) {
@@ -87,7 +76,7 @@ void GLFWWindowServer::get_window_size(RID p_window, int *r_width, int *r_height
 	glfwGetWindowSize(window->glfw_window, r_width, r_height);
 }
 
-VkSurfaceKHR GLFWWindowServer::get_vulkan_surface(RID p_window) const {
+VkSurfaceKHR GLFWWindowServer::window_get_vulkan_surface(RID p_window) const {
 
 	const GLFWWindowData *window = window_owner.get(p_window);
 	DEBUG_ONLY(ERR_FAIL_COND_V(!window, VK_NULL_HANDLE));

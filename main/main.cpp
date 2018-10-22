@@ -243,18 +243,29 @@ void tick(float deltaTime) {
 #endif
 }
 
+// Please move this inside the engine class
 void Main::start() {
 
+	// Save these inside the engine class
 	WindowServer *window_server = new GLFWWindowServer;
 	window_server->init_server();
 
-	VisualServer *vs = new VulkanVisualServer;
-	vs->init();
+	// Save these inside the engine class
+	VisualServer *visual_server = new VulkanVisualServer;
+	visual_server->init();
+
+	RID window = window_server->window_create("TestWindow", 100, 100);
+
+	visual_server->create_render_target(window);
+
+	// ---------------
+	// OLD CODE
 
 	vm = new OldVisualServer();
 	CRASH_COND(!vm->init());
 
 	ticker.init();
+
 	ready();
 	while (vm->can_step()) {
 		ticker.step();
@@ -263,10 +274,17 @@ void Main::start() {
 	}
 
 	exit();
-	vm->terminate();
 
+	vm->terminate();
 	delete vm;
 	vm = NULL;
+
+	// OLD CODE
+	// ---------------
+
+	visual_server->terminate();
+	delete visual_server;
+	visual_server = nullptr;
 
 	window_server->terminate_server();
 

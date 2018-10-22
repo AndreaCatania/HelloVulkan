@@ -18,13 +18,16 @@ public:
 	virtual void get_required_extensions(
 			std::vector<const char *> &r_extensions) = 0;
 
-	virtual RID create_window(
-			VkInstance p_vulkan_instance,
+	virtual RID window_create(
 			const char *p_title,
 			int p_width,
 			int p_height) = 0;
 
-	virtual void free_window(RID p_window) = 0;
+	virtual void window_free(RID p_window) = 0;
+
+	virtual void window_set_vulkan_instance(
+			RID p_window,
+			VkInstance p_vulkan_instance) = 0;
 
 	virtual void set_drawable(RID p_window, bool p_state) = 0;
 	virtual bool is_drawable(RID p_window) const = 0;
@@ -34,7 +37,7 @@ public:
 			int *r_width,
 			int *r_height) = 0;
 
-	virtual VkSurfaceKHR get_vulkan_surface(RID p_window) const = 0;
+	virtual VkSurfaceKHR window_get_vulkan_surface(RID p_window) const = 0;
 
 	// TODO not sure if should go here
 	virtual void fetch_events() = 0;
